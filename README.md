@@ -14,11 +14,14 @@ web GUI. A hot-pluggable plugin — no dsh source changes.
     poster while loading),
   - `web` wallpapers render in a sandboxed, click-through `<iframe>`,
   - `image` wallpapers display as-is,
-  - `scene` / `application` / other wallpapers render the **sharp Steam
-    workshop preview** (the same asset the workshop page shows, fetched once
-    and cached locally) with the tiny local GIF as the loading / offline
-    fallback; the *animated scene previews* toggle restores the GIF-only
-    behavior.
+  - `scene` / `application` / other wallpapers render the **original
+    background artwork extracted from the scene.pkg** — a dependency-free
+    decoder for the WE package format (TEXV/TEXB containers, LZ4 mipmaps,
+    DXT1/3/5, embedded PNG/JPEG; see scripts/survey-extract.mjs — 98%
+    extraction rate over 40 sampled scenes, many 4K+). Extractions are
+    cached under `~/.dsh/we-wallpaper-cache/`; the tiny local GIF serves as
+    the loading / fallback layer, and the *animated scene previews* toggle
+    restores the GIF-only behavior.
 - **A settings card** in the official plugin configuration section
   (**设置 → 插件配置**): browse the library with live previews, search,
   one-click apply, and a badge for the wallpaper currently running on your
@@ -98,13 +101,13 @@ npm run build       # tsc types + tsdown (lib/index.js + lib/client.js)
 
 - Audio is muted (browser autoplay policy; a wallpaper with sound would also
   fight your GUI audio).
-- `scene.pkg` wallpapers can't be rendered in a browser (the package uses a
-  proprietary codec — see scripts/probe-pkg.mjs), so scene backgrounds are
-  stills: the Steam workshop preview image, fetched over the network once
-  and cached in `~/.dsh/we-wallpaper-cache/`. Offline, or when the author
-  uploaded no preview, the tiny local GIF is used (the sharpening control
-  then does what it can). The *animated scene previews* option restores the
-  GIF-only behavior.
+- Scene backgrounds are **stills**: the largest landscape texture extracted
+  from scene.pkg (the package's proprietary format is decodable for
+  textures — see scripts/survey-extract.mjs — but the scene itself cannot be
+  re-rendered in a browser; particle/shaders are lost). Very old package
+  versions and a few exotic textures fall back to the tiny local GIF (the
+  sharpening control then does what it can). The *animated scene previews*
+  option restores the GIF-only behavior.
 - The translucency remap covers the main surface tokens
   (`--dsw-alias-*`); third-party plugins with their own hardcoded backgrounds
   may stay opaque.

@@ -21,7 +21,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, join, resolve, sep } from 'node:path'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { resolveHdPreview } from './steam-preview.ts'
+import { resolvePkgPreview } from './pkg-preview.ts'
 import { readState, writeState } from './state.ts'
 import {
   discoverWeInstall,
@@ -406,32 +406,34 @@ export function makeWeWallpaperRoutes(): WebRoute[] {
       },
     },
 
-    // --- Steam workshop HD preview (scene wallpapers) ---------------------
+    // --- extracted scene.pkg background (scene wallpapers) ---------------
     {
       kind: 'prefix',
-      path: `${WE_API_PREFIX}/hd`,
-      handler: async (req, res) => {
+      path: `${WE_API_PREFIX}/pkg`,
+      handler: (req, res) => {
         if (!requireMethod(req, res)) return
         if (!requireSameOrigin(req, res)) return
-        const rawId = req.url?.slice(`${WE_API_PREFIX}/hd/`.length).split('?')[0] ?? ''
+        const rawId = req.url?.slice(`${WE_API_PREFIX}/pkg/`.length).split('?')[0] ?? ''
         const entry = resolveEntry(req, res, rawId)
         if (entry === null) return
-        // Only workshop items have a Steam community page.
+        // Only workshop items carry a scene.pkg.
         if (entry.workshopId === null) {
-          json(res, 404, { ok: false, error: 'no-workshop-preview' })
+          json(res, 404, { ok: false, error: 'no-scene-package' })
           return
         }
-        const preview = await resolveHdPreview(entry.workshopId)
+        const { install } = loadScan()
+        const preview = install !== null
+          ? resolvePkgPreview(entry.workshopId, install.workshops)
+          : null
         if (preview === null || !existsSync(preview.file)) {
-          json(res, 404, { ok: false, error: 'hd-preview-unavailable' })
+          json(res, 404, { ok: false, error: 'pkg-preview-unavailable' })
           return
         }
-        const mime = preview.kind === 'video' ? 'video/mp4' : mimeFor(preview.file)
         res.writeHead(200, {
-          'content-type': mime,
+          'content-type': preview.mime,
           'content-length': String(statSync(preview.file).size),
           'cache-control': 'public, max-age=2592000',
-          'x-we-preview-kind': preview.kind,
+          'x-we-preview-kind': 'image',
         })
         createReadStream(preview.file).pipe(res)
       },

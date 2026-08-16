@@ -269,27 +269,16 @@ export class WallpaperLayer {
       this.media = gif
       this.mediaId = meta.id
 
-      // Sharp Steam workshop preview on top (workshop items only; hidden on
-      // error so the GIF keeps showing — the host falls back offline).
+      // Extracted scene.pkg background on top (workshop items only): the
+      // host decodes the sharpest landscape texture from scene.pkg into a
+      // PNG/JPEG and caches it; on error the GIF underneath keeps showing.
       if (!animated && meta.workshopId !== null) {
         const hd = document.createElement('img')
-        hd.src = `${API}/hd/${id}`
+        hd.src = `${API}/pkg/${id}`
         hd.alt = meta.title
-        hd.addEventListener('error', () => {
-          // Some workshop previews are videos (preview.mp4) — an <img> cannot
-          // render them, so fall back to a muted looping video element.
-          const video = document.createElement('video')
-          video.src = hd.src
-          video.autoplay = true
-          video.muted = true
-          video.loop = true
-          video.playsInline = true
-          video.disablePictureInPicture = true
-          video.addEventListener('error', () => { video.remove() })
-          hd.replaceWith(video)
-        })
+        hd.addEventListener('error', () => { hd.remove() })
         hd.addEventListener('load', () => {
-          // Once the HD frame is in, the blurry GIF underneath adds nothing.
+          // Once the sharp frame is in, the blurry GIF adds nothing.
           if (gif.isConnected) gif.style.display = 'none'
         })
         root.appendChild(hd)

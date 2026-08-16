@@ -18,6 +18,14 @@ import { makeWeWallpaperRoutes, WE_API_PREFIX } from './routes.ts'
 
 export { makeWeWallpaperRoutes, WE_API_PREFIX } from './routes.ts'
 export { readState, writeState, normalizeState, DEFAULT_STATE, stateFilePath } from './state.ts'
+export {
+  extractBackgroundPng,
+  parsePackage,
+  findTexCandidates,
+  decodeTexEntry,
+  lz4BlockDecode,
+  rgbaToPng,
+} from './pkg-tex.ts'
 
 /** Stable cordis plugin name (matches cordis.patch.yml insert id). */
 export const name = 'we-wallpaper'
