@@ -275,7 +275,19 @@ export class WallpaperLayer {
         const hd = document.createElement('img')
         hd.src = `${API}/hd/${id}`
         hd.alt = meta.title
-        hd.addEventListener('error', () => { hd.remove() })
+        hd.addEventListener('error', () => {
+          // Some workshop previews are videos (preview.mp4) — an <img> cannot
+          // render them, so fall back to a muted looping video element.
+          const video = document.createElement('video')
+          video.src = hd.src
+          video.autoplay = true
+          video.muted = true
+          video.loop = true
+          video.playsInline = true
+          video.disablePictureInPicture = true
+          video.addEventListener('error', () => { video.remove() })
+          hd.replaceWith(video)
+        })
         hd.addEventListener('load', () => {
           // Once the HD frame is in, the blurry GIF underneath adds nothing.
           if (gif.isConnected) gif.style.display = 'none'
