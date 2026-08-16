@@ -1,0 +1,6 @@
+# dsh-we-wallpaper bundle patch: inserts the plugin row into the web profile.
+# Install with `dsh plugin --profile web add <path-or-git-url>`, or append
+# this row manually to ~/.dsh/profiles/web/cordis.patch.yml.
+- insert:
+    - id: we-wallpaper
+      name: 'dsh-we-wallpaper'
