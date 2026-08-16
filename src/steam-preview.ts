@@ -37,6 +37,8 @@ interface CacheMeta {
   url: string
   kind: 'image' | 'video'
   fetchedAt: number
+  /** Set when the last attempt failed; suppress retries for a while. */
+  failedAt?: number
 }
 
 /** The Steam API endpoint (unauthenticated GetPublishedFileDetails). */
@@ -44,6 +46,15 @@ export const STEAM_API_URL = 'https://api.steampowered.com/ISteamRemoteStorage/G
 
 /** Freshness window: re-fetch after 30 days. */
 const FRESH_MS = 30 * 24 * 3600 * 1000
+
+/** Failure cooldown: do not retry a failed item for 1 hour. */
+const FAIL_COOLDOWN_MS = 3600 * 1000
+
+/** API call timeout (Steam can be slow/unstable on some networks). */
+const API_TIMEOUT_MS = 8000
+
+/** Preview download timeout. */
+const DOWNLOAD_TIMEOUT_MS = 15000
 
 /** Max bytes to accept from the preview CDN. */
 export const MAX_PREVIEW_BYTES = 50 * 1024 * 1024
@@ -95,13 +106,21 @@ export function readCacheMeta(workshopId: string, home: string = ''): CacheMeta 
     const raw: unknown = JSON.parse(readFileSync(cachedMetaPath(workshopId, home), 'utf8'))
     if (typeof raw !== 'object' || raw === null) return null
     const record = raw as Record<string, unknown>
-    if (typeof record.url !== 'string' || record.url === '') return null
+    if (typeof record.url !== 'string') return null
     const kind = record.kind === 'video' ? 'video' : 'image'
     const fetchedAt = typeof record.fetchedAt === 'number' ? record.fetchedAt : 0
-    return { url: record.url, kind, fetchedAt }
+    const failedAt = typeof record.failedAt === 'number' ? record.failedAt : undefined
+    return { url: record.url, kind, fetchedAt, failedAt }
   } catch {
     return null
   }
+}
+
+/** Record a failed attempt (cooldown marker). */
+export function markHdPreviewFailed(workshopId: string, home: string = '', now: number = Date.now()): void {
+  const dir = cacheDir(home)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(cachedMetaPath(workshopId, home), JSON.stringify({ url: '', kind: 'image', fetchedAt: 0, failedAt: now }), 'utf8')
 }
 
 /**
@@ -117,12 +136,20 @@ export async function resolveHdPreview(workshopId: string, opts: {
   home?: string
   now?: number
 } = {}): Promise<HdPreview | null> {
-  const fetchLike: FetchLike = opts.fetch ?? (async (url: string) => fetchWithTimeout(url, 20000))
+  const fetchLike: FetchLike = opts.fetch ?? (async (url: string) => fetchWithTimeout(url, DOWNLOAD_TIMEOUT_MS))
   const home = opts.home ?? ''
   const now = opts.now ?? Date.now()
 
-  // 1. Fresh cache hit.
+  // 0. Failure cooldown: a recent failed attempt is not retried (the Steam
+  // CDN is slow/unreliable on some networks and scene previews are often
+  // byte-identical to the local file anyway — the browser must not stall
+  // on every wallpaper switch).
   const meta = readCacheMeta(workshopId, home)
+  if (meta !== null && meta.failedAt !== undefined && now - meta.failedAt < FAIL_COOLDOWN_MS) {
+    return null
+  }
+
+  // 1. Fresh cache hit.
   if (meta !== null && now - meta.fetchedAt < FRESH_MS) {
     const file = cachedFilePath(workshopId, home)
     if (existsSync(file)) return { file, kind: meta.kind, url: meta.url }
@@ -177,6 +204,8 @@ export async function resolveHdPreview(workshopId: string, opts: {
     }
   }
 
+  // Failure: remember it so the next N renders do not stall on the network.
+  markHdPreviewFailed(workshopId, home, now)
   return null
 }
 

@@ -126,6 +126,16 @@ describe('resolveHdPreview', () => {
     expect(result).toBeNull()
   })
 
+  it('does not retry a failed item within the cooldown window', async () => {
+    const failing = stubFetch({})
+    await resolveHdPreview(ID, { fetch: failing.fetch, home, now: 1000 })
+    // Same session, shortly after: the fetch stub must stay untouched.
+    const { fetch, calls } = stubFetch({})
+    const result = await resolveHdPreview(ID, { fetch, home, now: 60_000 })
+    expect(result).toBeNull()
+    expect(calls).toEqual([])
+  })
+
   it('drops oversized downloads', async () => {
     const big = new Uint8Array(51 * 1024 * 1024)
     const { fetch } = stubFetch({
