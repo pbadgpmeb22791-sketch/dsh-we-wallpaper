@@ -23,6 +23,9 @@ export interface WeState {
   fit: 'cover' | 'contain'
   /** Preview sharpen 0-100 (scene previews are small; sharpening helps). */
   sharpen: number
+  /** Scene wallpapers: true = the animated (tiny) local GIF, false = the
+   *  sharp Steam workshop preview (default). */
+  animatedPreviews: boolean
 }
 
 /** Defaults when no state file exists. */
@@ -32,6 +35,7 @@ export const DEFAULT_STATE: WeState = {
   translucency: 50,
   fit: 'cover',
   sharpen: 40,
+  animatedPreviews: false,
 }
 
 /** The dsh home dir (DSH_HOME env wins; overridable for tests). */
@@ -61,7 +65,8 @@ export function normalizeState(raw: unknown): WeState {
   const sharpen = typeof record.sharpen === 'number' && Number.isFinite(record.sharpen)
     ? Math.max(0, Math.min(100, Math.round(record.sharpen)))
     : DEFAULT_STATE.sharpen
-  return { selectedId, scrim, translucency, fit, sharpen }
+  const animatedPreviews = record.animatedPreviews === true
+  return { selectedId, scrim, translucency, fit, sharpen, animatedPreviews }
 }
 
 /** Read the persisted state (defaults when absent or unreadable). */

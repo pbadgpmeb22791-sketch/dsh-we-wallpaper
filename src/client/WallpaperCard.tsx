@@ -33,6 +33,8 @@ export interface WallpaperCardState {
   translucency: number
   fit: 'cover' | 'contain'
   sharpen: number
+  /** Scene wallpapers: prefer the animated local GIF over the HD preview. */
+  animatedPreviews: boolean
   /** Last load error (display only). */
   error: string | null
 }
@@ -55,6 +57,8 @@ export interface WallpaperCardFace {
   setFit: (fit: 'cover' | 'contain') => void
   /** Set the preview sharpening 0-100. */
   setSharpen: (value: number) => void
+  /** Scene wallpapers: prefer the animated (blurry) local GIF over the HD preview. */
+  setAnimatedPreviews: (value: boolean) => void
 }
 
 /** Controller: owns the state, talks to the shared store and the host API. */
@@ -69,6 +73,7 @@ export class WallpaperCardController implements HostObservable<WallpaperCardStat
     translucency: 50,
     fit: 'cover',
     sharpen: 40,
+    animatedPreviews: false,
     error: null,
   }
   private readonly listeners = new Set<() => void>()
@@ -94,6 +99,7 @@ export class WallpaperCardController implements HostObservable<WallpaperCardStat
       setTranslucency: (value) => this.store.setTranslucency(value),
       setFit: (fit) => this.store.setFit(fit),
       setSharpen: (value) => this.store.setSharpen(value),
+      setAnimatedPreviews: (value) => this.store.setAnimatedPreviews(value),
     }
   }
 
@@ -119,6 +125,7 @@ export class WallpaperCardController implements HostObservable<WallpaperCardStat
       translucency: state.translucency,
       fit: state.fit,
       sharpen: state.sharpen,
+      animatedPreviews: state.animatedPreviews,
     }
   }
 
@@ -271,6 +278,14 @@ export function WallpaperCard(props: WallpaperCardProps) {
             onChange={(event) => props.setSharpen(Number(event.target.value))}
           />
         </div>
+        <label className="dsh-we-card-check" title={t('card.option.animatedHint')}>
+          <input
+            type="checkbox"
+            checked={state.animatedPreviews}
+            onChange={(event) => props.setAnimatedPreviews(event.target.checked)}
+          />
+          {t('card.option.animated')}
+        </label>
       </div>
 
       <div className="dsh-we-card-search">

@@ -1,25 +1,27 @@
 /**
  * dsh-we-wallpaper HTTP routes — the browser half talks to the host through
- * plain same-origin endpoints, mirroring the skin-center route family:
+ * plain same-origin endpoints:
  *
- *   GET /api/we-wallpaper/list      — wallpaper library (id/title/type/source)
- *   GET /api/we-wallpaper/preview/<id>   — the wallpaper preview image
- *   GET /api/we-wallpaper/media/<id>     — the main media file (video/image/audio)
- *   GET /api/we-wallpaper/web/<id>/<path> — static files of a web wallpaper
+ *   GET  /api/we-wallpaper/list          — wallpaper library (id/title/type/source)
+ *   GET  /api/we-wallpaper/state         — persisted selection + options
+ *   POST /api/we-wallpaper/state         — persist selection + options
+ *   GET  /api/we-wallpaper/preview/<id>  — the local wallpaper preview image
+ *   GET  /api/we-wallpaper/hd/<id>       — the Steam workshop HD preview (cached)
+ *   GET  /api/we-wallpaper/media/<id>    — the main media file (video/image/audio)
+ *   GET  /api/we-wallpaper/web/<id>/<path> — static files of a web wallpaper
  *
- * The selection itself is NOT a route: it lives in the `we-wallpaper` settings
- * namespace, written by the browser half through the settings scope and
- * persisted by the host settings provider — exactly like the skin-center
- * background control. Every route rejects cross-site requests (Sec-Fetch-Site
- * / Origin fence) so a malicious webpage cannot probe local files through a
- * localhost CSRF request; ids are resolved against the scan map (never used
- * as raw paths) and web-file paths are traversal-guarded.
+ * The selection persists in `~/.dsh/we-wallpaper.json` (src/state.ts).
+ * Every route rejects cross-site requests (Sec-Fetch-Site / Origin fence) so
+ * a malicious webpage cannot probe local files through a localhost CSRF
+ * request; ids are resolved against the scan map (never used as raw paths)
+ * and web-file paths are traversal-guarded.
  */
 
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, join, resolve, sep } from 'node:path'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import { resolveHdPreview } from './steam-preview.ts'
 import { readState, writeState } from './state.ts'
 import {
   discoverWeInstall,
@@ -401,6 +403,37 @@ export function makeWeWallpaperRoutes(): WebRoute[] {
           return
         }
         serveFile(req, res, abs)
+      },
+    },
+
+    // --- Steam workshop HD preview (scene wallpapers) ---------------------
+    {
+      kind: 'prefix',
+      path: `${WE_API_PREFIX}/hd`,
+      handler: async (req, res) => {
+        if (!requireMethod(req, res)) return
+        if (!requireSameOrigin(req, res)) return
+        const rawId = req.url?.slice(`${WE_API_PREFIX}/hd/`.length).split('?')[0] ?? ''
+        const entry = resolveEntry(req, res, rawId)
+        if (entry === null) return
+        // Only workshop items have a Steam community page.
+        if (entry.workshopId === null) {
+          json(res, 404, { ok: false, error: 'no-workshop-preview' })
+          return
+        }
+        const preview = await resolveHdPreview(entry.workshopId)
+        if (preview === null || !existsSync(preview.file)) {
+          json(res, 404, { ok: false, error: 'hd-preview-unavailable' })
+          return
+        }
+        const mime = preview.kind === 'video' ? 'video/mp4' : mimeFor(preview.file)
+        res.writeHead(200, {
+          'content-type': mime,
+          'content-length': String(statSync(preview.file).size),
+          'cache-control': 'public, max-age=2592000',
+          'x-we-preview-kind': preview.kind,
+        })
+        createReadStream(preview.file).pipe(res)
       },
     },
 

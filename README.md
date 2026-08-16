@@ -14,8 +14,11 @@ web GUI. A hot-pluggable plugin — no dsh source changes.
     poster while loading),
   - `web` wallpapers render in a sandboxed, click-through `<iframe>`,
   - `image` wallpapers display as-is,
-  - `scene` / `application` / other wallpapers use their (often animated)
-    preview image.
+  - `scene` / `application` / other wallpapers render the **sharp Steam
+    workshop preview** (the same asset the workshop page shows, fetched once
+    and cached locally) with the tiny local GIF as the loading / offline
+    fallback; the *animated scene previews* toggle restores the GIF-only
+    behavior.
 - **A settings card** in the official plugin configuration section
   (**设置 → 插件配置**): browse the library with live previews, search,
   one-click apply, and a badge for the wallpaper currently running on your
@@ -95,11 +98,13 @@ npm run build       # tsc types + tsdown (lib/index.js + lib/client.js)
 
 - Audio is muted (browser autoplay policy; a wallpaper with sound would also
   fight your GUI audio).
-- `scene.pkg` wallpapers can't be rendered in a browser — you get the
-  animated preview instead, and those previews are **very low resolution**
-  (most are 150-256px square, upscaled to the full viewport). The
-  sharpening control is the mitigation; there is no way to render the
-  proprietary scene package itself.
+- `scene.pkg` wallpapers can't be rendered in a browser (the package uses a
+  proprietary codec — see scripts/probe-pkg.mjs), so scene backgrounds are
+  stills: the Steam workshop preview image, fetched over the network once
+  and cached in `~/.dsh/we-wallpaper-cache/`. Offline, or when the author
+  uploaded no preview, the tiny local GIF is used (the sharpening control
+  then does what it can). The *animated scene previews* option restores the
+  GIF-only behavior.
 - The translucency remap covers the main surface tokens
   (`--dsw-alias-*`); third-party plugins with their own hardcoded backgrounds
   may stay opaque.

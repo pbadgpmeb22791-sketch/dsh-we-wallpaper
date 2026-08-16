@@ -78,6 +78,14 @@ export const CARD_CSS = `.dsh-we-card {
 .dsh-we-card-control input[type='range'] {
   width: 100%;
 }
+.dsh-we-card-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0.9;
+  cursor: pointer;
+}
 .dsh-we-card-search input {
   width: 100%;
   box-sizing: border-box;

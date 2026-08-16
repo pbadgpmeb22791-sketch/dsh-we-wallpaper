@@ -221,12 +221,18 @@ export class WallpaperLayer {
     return this.metas
   }
 
-  /** Swap in the media element for one wallpaper (only called on id change). */
+  /**
+   * Swap in the media element for one wallpaper (only called on id change).
+   * The `animatedPreviews` option only affects scene/application wallpapers:
+   * the tiny local GIF is the loading + offline fallback layer, and the sharp
+   * Steam workshop preview (when the host can fetch it) renders on top.
+   */
   private renderMedia(meta: WallpaperListItem): void {
     this.clearMedia()
     const root = this.root
     if (root === null) return
     const id = encodeURIComponent(meta.id)
+    const animated = this.store.getSnapshot().animatedPreviews
     let element: HTMLElement
 
     if (meta.type === 'video') {
@@ -255,10 +261,28 @@ export class WallpaperLayer {
       image.alt = meta.title
       element = image
     } else {
-      const image = document.createElement('img')
-      image.src = `${API}/preview/${id}`
-      image.alt = meta.title
-      element = image
+      // Scene / application / other: the GIF preview is the base layer.
+      const gif = document.createElement('img')
+      gif.src = `${API}/preview/${id}`
+      gif.alt = meta.title
+      root.appendChild(gif)
+      this.media = gif
+      this.mediaId = meta.id
+
+      // Sharp Steam workshop preview on top (workshop items only; hidden on
+      // error so the GIF keeps showing — the host falls back offline).
+      if (!animated && meta.workshopId !== null) {
+        const hd = document.createElement('img')
+        hd.src = `${API}/hd/${id}`
+        hd.alt = meta.title
+        hd.addEventListener('error', () => { hd.remove() })
+        hd.addEventListener('load', () => {
+          // Once the HD frame is in, the blurry GIF underneath adds nothing.
+          if (gif.isConnected) gif.style.display = 'none'
+        })
+        root.appendChild(hd)
+      }
+      return
     }
 
     root.appendChild(element)
@@ -270,19 +294,26 @@ export class WallpaperLayer {
    * Tear the media element down and release its decode resources promptly:
    * pausing + clearing the src + calling load() on a <video> drops the
    * decoder immediately instead of waiting for GC (avoids the memory spike
-   * of stacked 4K decode pipelines when switching wallpapers).
+   * of stacked 4K decode pipelines when switching wallpapers). Every media
+   * child goes (scene wallpapers stack a GIF + HD img pair).
    */
   private clearMedia(): void {
     const media = this.media
     this.media = null
     this.mediaId = ''
+    const root = this.root
+    if (root !== null) {
+      for (const child of [...root.children]) {
+        if (child === this.scrimEl) continue
+        child.remove()
+      }
+    }
     if (media === null) return
     if (media instanceof HTMLVideoElement) {
       media.pause()
       media.removeAttribute('src')
       media.load()
     }
-    media.remove()
   }
 
   /** Re-snapshot the base tokens after a theme flip and re-apply. */

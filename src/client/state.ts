@@ -13,6 +13,7 @@ export interface WeState {
   translucency: number
   fit: 'cover' | 'contain'
   sharpen: number
+  animatedPreviews: boolean
 }
 
 /** Defaults when the host has no state yet. */
@@ -22,6 +23,7 @@ export const DEFAULT_STATE: WeState = {
   translucency: 50,
   fit: 'cover',
   sharpen: 40,
+  animatedPreviews: false,
 }
 
 const API = '/api/we-wallpaper'
@@ -76,6 +78,10 @@ export class WallpaperStateStore {
 
   setSharpen(value: number): void {
     this.writeSoon({ sharpen: value })
+  }
+
+  setAnimatedPreviews(value: boolean): void {
+    void this.write({ animatedPreviews: value })
   }
 
   /** Trailing-edge debounce state for option writes. */
@@ -142,5 +148,6 @@ export function normalize(raw: WeState): WeState {
     sharpen: typeof raw.sharpen === 'number' && Number.isFinite(raw.sharpen)
       ? Math.max(0, Math.min(100, Math.round(raw.sharpen)))
       : DEFAULT_STATE.sharpen,
+    animatedPreviews: raw.animatedPreviews === true,
   }
 }
