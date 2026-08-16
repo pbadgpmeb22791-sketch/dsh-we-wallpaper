@@ -22,8 +22,14 @@ web GUI. A hot-pluggable plugin — no dsh source changes.
   desktop.
 - **Readability controls**: a dark *scrim* over the wallpaper, *panel
   translucency* (the official surface tokens are re-declared translucent, so
-  the wallpaper glows through — in light and dark themes), and *cover /
-  contain* fit.
+  the wallpaper glows through — in light and dark themes), *cover / contain*
+  fit, and *sharpening* (an SVG convolution filter that visibly recovers
+  edges — scene previews are tiny sources and get upscaled to the full
+  viewport).
+- **Resource-conscious playback**: the media element is only (re)created when
+  the wallpaper actually changes — option tweaks are pure CSS updates, so a
+  slider drag never restarts the video stream or spawns a second decode
+  pipeline.
 - **Persistent selection**: stored in `~/.dsh/we-wallpaper.json` (the same
   pattern dsh-pet uses), so the wallpaper comes back after a page refresh or
   a dsh restart.
@@ -90,7 +96,10 @@ npm run build       # tsc types + tsdown (lib/index.js + lib/client.js)
 - Audio is muted (browser autoplay policy; a wallpaper with sound would also
   fight your GUI audio).
 - `scene.pkg` wallpapers can't be rendered in a browser — you get the
-  animated preview instead.
+  animated preview instead, and those previews are **very low resolution**
+  (most are 150-256px square, upscaled to the full viewport). The
+  sharpening control is the mitigation; there is no way to render the
+  proprietary scene package itself.
 - The translucency remap covers the main surface tokens
   (`--dsw-alias-*`); third-party plugins with their own hardcoded backgrounds
   may stay opaque.

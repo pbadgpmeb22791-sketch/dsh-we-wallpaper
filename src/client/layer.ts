@@ -21,6 +21,18 @@ import { BODY_ATTR, LAYER_ID } from './styles.ts'
 
 const API = '/api/we-wallpaper'
 
+/** SVG namespace for the sharpen filter defs. */
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+/** The plugin-owned sharpen filter id (referenced by --dsh-we-filter). */
+export const SHARPEN_FILTER_ID = 'dsh-we-sharpen'
+
+/** CSS variable carrying the active filter (none when sharpen = 0). */
+export const FILTER_VAR = '--dsh-we-filter'
+
+/** Max sharpen strength (kernel off-center magnitude at 100). */
+const MAX_SHARPEN = 0.8
+
 /** The shell surface tokens the translucency veil remaps. */
 const SURFACE_TOKENS = [
   '--dsw-alias-bg-base',
@@ -79,6 +91,7 @@ export class WallpaperLayer {
   private metas: Map<string, WallpaperListItem> | null = null
   private readonly disposers: Array<() => void> = []
   private darkObserver: MutationObserver | null = null
+  private kernelEl: SVGFEConvolveMatrixElement | null = null
 
   /** @param store - the shared wallpaper state store. */
   constructor(store: WallpaperStateStore) {
@@ -100,6 +113,23 @@ export class WallpaperLayer {
     document.body.appendChild(root)
     this.root = root
 
+    // The sharpen filter: an SVG feConvolveMatrix whose kernel the plugin
+    // owns (strength follows the `sharpen` setting). The media elements
+    // reference it through --dsh-we-filter, so 0 disables it entirely.
+    const svg = document.createElementNS(SVG_NS, 'svg')
+    svg.setAttribute('width', '0')
+    svg.setAttribute('height', '0')
+    svg.style.position = 'absolute'
+    const filter = document.createElementNS(SVG_NS, 'filter')
+    filter.id = SHARPEN_FILTER_ID
+    const kernel = document.createElementNS(SVG_NS, 'feConvolveMatrix')
+    kernel.setAttribute('order', '3')
+    kernel.setAttribute('preserveAlpha', 'true')
+    filter.appendChild(kernel)
+    svg.appendChild(filter)
+    document.body.appendChild(svg)
+    this.kernelEl = kernel
+
     this.disposers.push(this.store.subscribe(() => { void this.render() }))
     this.darkObserver = new MutationObserver(() => this.refreshTokens())
     this.darkObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
@@ -112,13 +142,14 @@ export class WallpaperLayer {
     for (const dispose of this.disposers.splice(0)) dispose()
     this.darkObserver?.disconnect()
     this.darkObserver = null
-    this.media?.remove()
-    this.media = null
+    this.clearMedia()
     this.root?.remove()
     this.root = null
     this.scrimEl = null
     this.tokensTag?.remove()
     this.tokensTag = null
+    this.kernelEl?.ownerSVGElement?.remove()
+    this.kernelEl = null
     document.body.removeAttribute(BODY_ATTR)
   }
 
@@ -127,17 +158,37 @@ export class WallpaperLayer {
     return this.store.getSnapshot()
   }
 
-  /** Re-render everything from the store. */
+  /** Monotonic render sequence: a superseded async render must not touch the DOM. */
+  private renderSeq = 0
+
+  /** The wallpaper id the current media element plays ('' = none). */
+  private mediaId = ''
+
+  /**
+   * Apply the state to the layer. Option changes (scrim / translucency /
+   * sharpen) are pure CSS updates; the media element is only (re)created when
+   * the selected wallpaper actually changes — recreating a <video> on every
+   * slider tick would spawn a new decode pipeline per event (memory churn).
+   */
   private async render(): Promise<void> {
+    const seq = ++this.renderSeq
     const settings = this.read()
     if (this.scrimEl !== null) {
       this.scrimEl.style.background = `rgba(0, 0, 0, ${settings.scrim / 100})`
     }
     this.applyTranslucency(settings.translucency)
+    this.applySharpen(settings.sharpen)
+    if (this.root !== null) {
+      this.root.style.setProperty('--dsw-we-fit', settings.fit)
+    }
+
     if (settings.selectedId === '') {
-      this.clearMedia()
+      if (this.mediaId !== '') this.clearMedia()
       return
     }
+    // Same wallpaper: keep the running element (no re-stream, no re-decode).
+    if (this.mediaId === settings.selectedId && this.media !== null) return
+
     let metas = await this.ensureMetas()
     let meta = metas?.get(settings.selectedId)
     // The selection may predate this session's scan; one refetch covers
@@ -147,11 +198,12 @@ export class WallpaperLayer {
       metas = await this.ensureMetas()
       meta = metas?.get(settings.selectedId)
     }
+    if (seq !== this.renderSeq) return // superseded while awaiting
     if (meta === undefined) {
-      this.clearMedia()
+      if (this.mediaId !== '') this.clearMedia()
       return
     }
-    this.renderMedia(meta, settings.fit)
+    this.renderMedia(meta)
   }
 
   /** Fetch the library (cached per mount); returns the current map. */
@@ -169,12 +221,11 @@ export class WallpaperLayer {
     return this.metas
   }
 
-  /** Swap in the media element for one wallpaper. */
-  private renderMedia(meta: WallpaperListItem, fit: 'cover' | 'contain'): void {
+  /** Swap in the media element for one wallpaper (only called on id change). */
+  private renderMedia(meta: WallpaperListItem): void {
     this.clearMedia()
     const root = this.root
     if (root === null) return
-    root.style.setProperty('--dsw-we-fit', fit)
     const id = encodeURIComponent(meta.id)
     let element: HTMLElement
 
@@ -212,11 +263,26 @@ export class WallpaperLayer {
 
     root.appendChild(element)
     this.media = element
+    this.mediaId = meta.id
   }
 
+  /**
+   * Tear the media element down and release its decode resources promptly:
+   * pausing + clearing the src + calling load() on a <video> drops the
+   * decoder immediately instead of waiting for GC (avoids the memory spike
+   * of stacked 4K decode pipelines when switching wallpapers).
+   */
   private clearMedia(): void {
-    this.media?.remove()
+    const media = this.media
     this.media = null
+    this.mediaId = ''
+    if (media === null) return
+    if (media instanceof HTMLVideoElement) {
+      media.pause()
+      media.removeAttribute('src')
+      media.load()
+    }
+    media.remove()
   }
 
   /** Re-snapshot the base tokens after a theme flip and re-apply. */
@@ -257,5 +323,26 @@ export class WallpaperLayer {
     tag.textContent = rules.join('\n')
     document.head.appendChild(tag)
     this.tokensTag = tag
+  }
+
+  /**
+   * Drive the sharpen filter: an unsharp-style 3x3 convolution
+   * ([0 -s 0; -s 1+4s -s; 0 -s 0] — identity + s * (identity - blur)).
+   * Scene previews are tiny (often 150-256px) and get upscaled to the full
+   * viewport; the mild kernel recovers perceived edge crispness. 0 disables
+   * the filter entirely (--dsh-we-filter: none).
+   * @param sharpen - 0-100 strength.
+   */
+  private applySharpen(sharpen: number): void {
+    if (this.root === null) return
+    const s = Math.max(0, Math.min(100, sharpen)) / 100 * MAX_SHARPEN
+    if (s <= 0) {
+      this.root.style.setProperty(FILTER_VAR, 'none')
+      return
+    }
+    this.root.style.setProperty(FILTER_VAR, `url(#${SHARPEN_FILTER_ID})`)
+    const center = 1 + 4 * s
+    const kernel = `0 ${-s.toFixed(3)} 0 ${-s.toFixed(3)} ${center.toFixed(3)} ${-s.toFixed(3)} 0 ${-s.toFixed(3)} 0`
+    this.kernelEl?.setAttribute('kernelMatrix', kernel)
   }
 }

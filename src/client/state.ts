@@ -12,6 +12,7 @@ export interface WeState {
   scrim: number
   translucency: number
   fit: 'cover' | 'contain'
+  sharpen: number
 }
 
 /** Defaults when the host has no state yet. */
@@ -20,6 +21,7 @@ export const DEFAULT_STATE: WeState = {
   scrim: 25,
   translucency: 50,
   fit: 'cover',
+  sharpen: 40,
 }
 
 const API = '/api/we-wallpaper'
@@ -54,21 +56,49 @@ export class WallpaperStateStore {
     }
   }
 
-  /** Apply a wallpaper ('' = official background). */
+  /** Apply a wallpaper ('' = official background) — immediate write. */
   select(id: string): void {
     void this.write({ selectedId: id })
   }
 
+  /** Option writes are debounced: a slider drag coalesces into one POST. */
   setScrim(value: number): void {
-    void this.write({ scrim: value })
+    this.writeSoon({ scrim: value })
   }
 
   setTranslucency(value: number): void {
-    void this.write({ translucency: value })
+    this.writeSoon({ translucency: value })
   }
 
   setFit(fit: 'cover' | 'contain'): void {
-    void this.write({ fit })
+    this.writeSoon({ fit })
+  }
+
+  setSharpen(value: number): void {
+    this.writeSoon({ sharpen: value })
+  }
+
+  /** Trailing-edge debounce state for option writes. */
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null
+  private pendingPatch: Partial<WeState> = {}
+
+  /**
+   * Apply optimistically (live preview) and coalesce the host write: rapid
+   * option changes during one drag produce exactly one POST.
+   * @param patch - the option patch.
+   * @param delay - trailing delay in ms.
+   */
+  private writeSoon(patch: Partial<WeState>, delay = 150): void {
+    this.state = normalize({ ...this.state, ...patch })
+    this.publish()
+    Object.assign(this.pendingPatch, patch)
+    if (this.pendingTimer !== null) clearTimeout(this.pendingTimer)
+    this.pendingTimer = setTimeout(() => {
+      this.pendingTimer = null
+      const merged = this.pendingPatch
+      this.pendingPatch = {}
+      void this.write(merged)
+    }, delay)
   }
 
   /** Optimistic local apply, then persist through the host. */
@@ -109,5 +139,8 @@ export function normalize(raw: WeState): WeState {
       ? Math.max(0, Math.min(90, Math.round(raw.translucency)))
       : DEFAULT_STATE.translucency,
     fit: raw.fit === 'contain' ? 'contain' : 'cover',
+    sharpen: typeof raw.sharpen === 'number' && Number.isFinite(raw.sharpen)
+      ? Math.max(0, Math.min(100, Math.round(raw.sharpen)))
+      : DEFAULT_STATE.sharpen,
   }
 }

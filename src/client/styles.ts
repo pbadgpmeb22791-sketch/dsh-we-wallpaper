@@ -29,6 +29,8 @@ export const LAYER_CSS = `#${LAYER_ID} {
   object-fit: var(--dsw-we-fit, cover);
   border: 0;
   background: transparent;
+  /* The plugin-owned SVG sharpen filter; none when sharpen = 0. */
+  filter: var(--dsh-we-filter, none);
 }
 #${LAYER_ID} > iframe {
   pointer-events: none;

@@ -21,6 +21,8 @@ export interface WeState {
   translucency: number
   /** Media fit. */
   fit: 'cover' | 'contain'
+  /** Preview sharpen 0-100 (scene previews are small; sharpening helps). */
+  sharpen: number
 }
 
 /** Defaults when no state file exists. */
@@ -29,6 +31,7 @@ export const DEFAULT_STATE: WeState = {
   scrim: 25,
   translucency: 50,
   fit: 'cover',
+  sharpen: 40,
 }
 
 /** The dsh home dir (DSH_HOME env wins; overridable for tests). */
@@ -55,7 +58,10 @@ export function normalizeState(raw: unknown): WeState {
     ? Math.max(0, Math.min(90, Math.round(record.translucency)))
     : DEFAULT_STATE.translucency
   const fit = record.fit === 'contain' ? 'contain' : 'cover'
-  return { selectedId, scrim, translucency, fit }
+  const sharpen = typeof record.sharpen === 'number' && Number.isFinite(record.sharpen)
+    ? Math.max(0, Math.min(100, Math.round(record.sharpen)))
+    : DEFAULT_STATE.sharpen
+  return { selectedId, scrim, translucency, fit, sharpen }
 }
 
 /** Read the persisted state (defaults when absent or unreadable). */

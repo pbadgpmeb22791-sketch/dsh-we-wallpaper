@@ -21,7 +21,7 @@ afterEach(() => {
 
 describe('normalizeState', () => {
   it('applies defaults to an empty section', () => {
-    expect(normalizeState({})).toEqual({ selectedId: '', scrim: 25, translucency: 50, fit: 'cover' })
+    expect(normalizeState({})).toEqual({ selectedId: '', scrim: 25, translucency: 50, fit: 'cover', sharpen: 40 })
   })
 
   it('clamps out-of-bounds numbers and coerces the fit', () => {
@@ -30,8 +30,11 @@ describe('normalizeState', () => {
       scrim: 100,
       translucency: 0,
       fit: 'cover',
+      sharpen: 40,
     })
-    expect(normalizeState({ fit: 'contain' }).fit).toBe('contain')
+    expect(normalizeState({ fit: 'contain', sharpen: 99 }).fit).toBe('contain')
+    expect(normalizeState({ sharpen: 250 }).sharpen).toBe(100)
+    expect(normalizeState({ sharpen: -5 }).sharpen).toBe(0)
   })
 
   it('drops unknown fields and non-object input', () => {
@@ -40,6 +43,7 @@ describe('normalizeState', () => {
       scrim: 25,
       translucency: 50,
       fit: 'cover',
+      sharpen: 40,
     })
     expect(normalizeState('junk').selectedId).toBe('')
   })
@@ -47,7 +51,7 @@ describe('normalizeState', () => {
 
 describe('readState / writeState', () => {
   it('returns defaults when no state file exists', () => {
-    expect(readState(home)).toEqual({ selectedId: '', scrim: 25, translucency: 50, fit: 'cover' })
+    expect(readState(home)).toEqual({ selectedId: '', scrim: 25, translucency: 50, fit: 'cover', sharpen: 40 })
   })
 
   it('round-trips a partial write and survives a re-read', () => {
@@ -61,13 +65,13 @@ describe('readState / writeState', () => {
   it('merges over the persisted state and writes atomically', () => {
     writeState({ selectedId: '111', fit: 'contain' }, home)
     const next = writeState({ translucency: 30 }, home)
-    expect(next).toEqual({ selectedId: '111', scrim: 25, translucency: 30, fit: 'contain' })
+    expect(next).toEqual({ selectedId: '111', scrim: 25, translucency: 30, fit: 'contain', sharpen: 40 })
     // Atomic write: no temp file left behind.
     expect(readFileSync(stateFilePath(home), 'utf8')).not.toContain('.tmp')
   })
 
   it('falls back to defaults on a corrupted file', () => {
     writeFileSync(stateFilePath(home), '{broken json', 'utf8')
-    expect(readState(home)).toEqual({ selectedId: '', scrim: 25, translucency: 50, fit: 'cover' })
+    expect(readState(home)).toEqual({ selectedId: '', scrim: 25, translucency: 50, fit: 'cover', sharpen: 40 })
   })
 })

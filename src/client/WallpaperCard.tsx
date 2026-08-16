@@ -1,4 +1,4 @@
-﻿/**
+/**
  * The dynamic-wallpaper settings card, registered into the official plugin
  * configuration section (`settings.plugin.item`). Lists the local Wallpaper
  * Engine library with live previews, applies a selection through the
@@ -32,6 +32,7 @@ export interface WallpaperCardState {
   scrim: number
   translucency: number
   fit: 'cover' | 'contain'
+  sharpen: number
   /** Last load error (display only). */
   error: string | null
 }
@@ -52,6 +53,8 @@ export interface WallpaperCardFace {
   setTranslucency: (value: number) => void
   /** Set the media fit. */
   setFit: (fit: 'cover' | 'contain') => void
+  /** Set the preview sharpening 0-100. */
+  setSharpen: (value: number) => void
 }
 
 /** Controller: owns the state, talks to the shared store and the host API. */
@@ -65,6 +68,7 @@ export class WallpaperCardController implements HostObservable<WallpaperCardStat
     scrim: 25,
     translucency: 50,
     fit: 'cover',
+    sharpen: 40,
     error: null,
   }
   private readonly listeners = new Set<() => void>()
@@ -89,6 +93,7 @@ export class WallpaperCardController implements HostObservable<WallpaperCardStat
       setScrim: (value) => this.store.setScrim(value),
       setTranslucency: (value) => this.store.setTranslucency(value),
       setFit: (fit) => this.store.setFit(fit),
+      setSharpen: (value) => this.store.setSharpen(value),
     }
   }
 
@@ -113,6 +118,7 @@ export class WallpaperCardController implements HostObservable<WallpaperCardStat
       scrim: state.scrim,
       translucency: state.translucency,
       fit: state.fit,
+      sharpen: state.sharpen,
     }
   }
 
@@ -251,6 +257,20 @@ export function WallpaperCard(props: WallpaperCardProps) {
             <option value="contain">{t('card.option.fit.contain')}</option>
           </select>
         </div>
+        <div className="dsh-we-card-control">
+          <label htmlFor="dsh-we-sharpen" title={t('card.option.sharpenHint')}>
+            {t('card.option.sharpen')}: {state.sharpen}%
+          </label>
+          <input
+            id="dsh-we-sharpen"
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={state.sharpen}
+            onChange={(event) => props.setSharpen(Number(event.target.value))}
+          />
+        </div>
       </div>
 
       <div className="dsh-we-card-search">
@@ -294,12 +314,17 @@ export function WallpaperCard(props: WallpaperCardProps) {
                       alt={wallpaper.title}
                       src={`/api/we-wallpaper/preview/${encodeURIComponent(wallpaper.id)}`}
                       onError={(event) => {
-                        // Broken preview: swap in the empty placeholder.
+                        // Broken preview: hide the img and put a placeholder
+                        // SIBLING in (never replace the img node — React owns
+                        // it and would throw on its next reconciliation).
                         const img = event.currentTarget
+                        if (img.dataset.fallback === 'true') return
+                        img.dataset.fallback = 'true'
+                        img.style.display = 'none'
                         const holder = document.createElement('div')
                         holder.className = 'dsh-we-card-thumb-empty'
                         holder.textContent = wallpaper.title
-                        img.replaceWith(holder)
+                        img.insertAdjacentElement('afterend', holder)
                       }}
                     />
                     <div className="dsh-we-card-meta">
