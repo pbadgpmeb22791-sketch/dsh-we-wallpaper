@@ -7,6 +7,14 @@
 
 - 语言: [English](README.md)
 
+## 演示 / Screenshots
+
+设置卡片与应用到界面背景的场景壁纸：
+
+![demo-1](docs/images/demo-1.png)
+
+![demo-2](docs/images/demo-2.png)
+
 ## 特性
 
 - **把动态壁纸渲染为 GUI 背景**
@@ -84,6 +92,24 @@ dsh plugin --profile web add <路径或git地址>
 - 音频静音（浏览器自动播放策略）
 - 半透明重映射覆盖官方 `--dsw-alias-*` token；自带硬编码背景的第三方插件
   可能仍然不透明
+
+## 求助 / Help wanted
+
+作者自述（也是本项目尚未完全解决的问题，欢迎有能力的人接手）：
+
+> 我目前能做的 wallpaper engine 中动态壁纸格式是**视频文件**的才可以顺利作为
+> dsh 的壁纸；还有一种格式是 `.pkg` 加密格式，我尝试过 GitHub 上的 pkg 格式
+> 提取器，但是还是失败了，选择这种格式的壁纸的时候会显示失败。我本人是个
+> 业余的人员，只是尝试使用 agent 做一些想做的事情，如果有人会做的话，可以
+> 尝试做一下，谢谢了。
+
+补充现状：本插件内置了零依赖的 `scene.pkg` 解码器（`src/pkg-tex.ts`），已覆盖
+大部分创意工坊场景——40 个采样场景实测 98% 提取成功（大量 4K–8K 原图）。
+仍然失败的：极老包版本（PKGV0002 时代，条目名与数据错位）与少量特殊贴图容器
+（这些会回退到本地动图）。如果你了解 WE 包/tex 格式的剩余细节，欢迎对
+`src/pkg-tex.ts` 提 PR。复现资料见
+[scripts/probe-pkg.mjs](scripts/probe-pkg.mjs) 与
+[docs/SUMMARY.md](docs/SUMMARY.md)。
 
 ## 路线图
 

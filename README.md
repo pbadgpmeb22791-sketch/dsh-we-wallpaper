@@ -6,7 +6,18 @@ Web GUI — **video wallpapers play**, **web wallpapers render**, and **scene
 wallpapers get their original high-resolution artwork decoded straight from
 the `.pkg` file**. Hot-pluggable, dependency-free, no dsh source changes.
 
-- Language: [简体中文](README.zh.md)
+- Language: [简体中文](README(ch).md)
+
+## Screenshots / 演示
+
+The wallpaper library card and a scene wallpaper applied as the GUI
+background:
+
+设置卡片与应用到界面背景的场景壁纸：
+
+![demo-1](docs/images/demo-1.png)
+
+![demo-2](docs/images/demo-2.png)
 
 ## Features
 
@@ -98,6 +109,26 @@ manual `cordis.patch.yml` editing and dsh-super-injector) and
 - Audio is muted (browser autoplay policy)
 - The translucency remap covers the official `--dsw-alias-*` tokens;
   third-party plugins with hardcoded backgrounds may stay opaque
+
+## Help wanted / 求助
+
+A note from the author (业余作者自述，也欢迎有能力的人接手完善):
+
+> 我目前能做的 wallpaper engine 中动态壁纸格式是**视频文件**的才可以顺利作为
+> dsh 的壁纸；还有一种格式是 `.pkg` 加密格式，我尝试过 GitHub 上的 pkg 格式
+> 提取器，但是还是失败了，选择这种格式的壁纸的时候会显示失败。我本人是个
+> 业余的人员，只是尝试使用 agent 做一些想做的事情，如果有人会做的话，可以
+> 尝试做一下，谢谢了。
+
+Current status for context: this plugin ships its own dependency-free
+`scene.pkg` decoder (`src/pkg-tex.ts`), which covers most workshop scenes —
+measured 98% extraction over 40 sampled scenes (many 4K–8K). What still
+fails: very old packages (PKGV0002-era layout with misaligned entry names)
+and a few exotic texture containers (they fall back to the animated local
+GIF). If you know the remaining details of the WE package/tex format, a PR
+against `src/pkg-tex.ts` is very welcome. Reproduction notes live in
+[scripts/probe-pkg.mjs](scripts/probe-pkg.mjs) and
+[docs/SUMMARY.md](docs/SUMMARY.md).
 
 ## Roadmap
 
