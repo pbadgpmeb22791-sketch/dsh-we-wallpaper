@@ -1,0 +1,87 @@
+{
+  "name": "dsh-we-wallpaper",
+  "description": "Wallpaper Engine bridge for the DeepSeek Harness web GUI: browse your local Wallpaper Engine library and use any dynamic wallpaper as the GUI background — video, web, image and scene previews, with scrim and translucency controls. Hot-pluggable via cordis.patch.yml + profile, no dsh source changes.",
+  "version": "0.3.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsdown",
+    "prepare": "npm run build",
+    "watch": "tsdown --watch",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-runtime": ">=0.1.0-rc.5 <1",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.1.0-rc.5 <1",
+    "@deepseek-ai/dsh-host-webserver": ">=0.1.0-rc.5 <1",
+    "react": "^18.2.0"
+  },
+  "dependencies": {
+    "schemastery": "^3.18.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.5",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.5",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "^0.1.0-rc.5",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.5",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.5",
+    "@types/node": "^24.13.3",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "^18.3.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsdown": "0.22.2",
+    "typescript": "~5.7.2",
+    "vitest": "^3.0.0"
+  },
+  "files": [
+    "lib",
+    "src",
+    "tools",
+    "cordis.patch.yml",
+    "README.md",
+    "README(ch).md",
+    "docs"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "wallpaper-engine",
+    "dynamic-wallpaper",
+    "theme"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pbadgpmeb22791-sketch/dsh-we-wallpaper.git"
+  }
+}
