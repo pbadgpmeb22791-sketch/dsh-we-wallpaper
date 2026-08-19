@@ -2,18 +2,33 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:
   test:
+    name: test (${{ matrix.name }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: legacy
+            directory: .
+            lockfile: package-lock.json
+          - name: v0.3.0
+            directory: new
+            lockfile: new/package-lock.json
+    defaults:
+      run:
+        working-directory: ${{ matrix.directory }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: ${{ matrix.lockfile }}
       - run: npm ci
       - run: npm run typecheck
       - run: npm test

@@ -9,6 +9,10 @@
 - Added scene-video generation, status and range-streaming endpoints, with
   bounded recording time, one-job concurrency, cleanup and safe fallbacks.
 - Verified sample `3409595232` at 1858x1080, ~30 FPS and ~15.2 Mbps.
+- Added step-by-step Chinese installation, first-use, cache cleanup,
+  troubleshooting, update, rollback and uninstall instructions.
+- CI now validates both the legacy root package and the independent `new/`
+  v0.3.0 package on Linux.
 
 ## [0.2.0] - 2026-08-19
 

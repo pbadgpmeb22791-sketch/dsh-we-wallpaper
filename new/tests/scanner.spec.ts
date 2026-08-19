@@ -119,7 +119,7 @@ describe('steamRootCandidates', () => {
     })
     expect(roots).toContain(library)
     expect(roots).toContain('D:\\Steam')
-    expect(roots).toContain('C:\\Program Files (x86)\\Steam')
+    expect(roots).toContain(join('C:\\Program Files (x86)', 'Steam'))
   })
 })
 
