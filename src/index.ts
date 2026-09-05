@@ -14,12 +14,24 @@
 import { Context } from '@deepseek-ai/cordis'
 // Type-only: pulls the dsh-host-webserver service seat (ctx.webServer).
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import z from 'schemastery'
+import { disposeSceneVideoCapture } from './scene-video.ts'
 import { makeWeWallpaperRoutes, WE_API_PREFIX } from './routes.ts'
 
 export { makeWeWallpaperRoutes, WE_API_PREFIX } from './routes.ts'
+export {
+  disposeSceneVideoCapture,
+  getSceneVideoStatus,
+  requestSceneVideo,
+  sceneVideoCachePath,
+  wcapIni,
+} from './scene-video.ts'
 export { readState, writeState, normalizeState, DEFAULT_STATE, stateFilePath } from './state.ts'
 export {
   extractBackgroundPng,
+  extractBackgroundWithDiagnostics,
+  findSceneBackgroundTextures,
   parsePackage,
   findTexCandidates,
   decodeTexEntry,
@@ -30,14 +42,38 @@ export {
 /** Stable cordis plugin name (matches cordis.patch.yml insert id). */
 export const name = 'we-wallpaper'
 
+/**
+ * Settings namespace this plugin owns. dsh 2.x renders a settings card only
+ * when its slot key names a settings namespace the Host actually serves, so
+ * the namespace below is both the card's slot key (client half) and a real
+ * registration here.
+ */
+export const SETTINGS_NAMESPACE = settingsNamespace('we-wallpaper')
+
+/** Schema backing the settings namespace (mirrors the card's display options). */
+const WALLPAPER_SETTINGS_SCHEMA = z.object({
+  scrim: z.number().default(25),
+  translucency: z.number().default(50),
+  fit: z.string().default('cover'),
+  sharpen: z.number().default(40),
+  sceneMode: z.string().default('animated-first'),
+  animatedPreviews: z.boolean().default(true),
+  repkgPath: z.string().default(''),
+})
+
 /** Services required before the plugin can mount its routes. */
-export const inject = ['webServer']
+export const inject = ['webServer', 'settings']
 
 /**
  * Register the API routes.
  * @param ctx - cordis context.
  */
 export function apply(ctx: Context): void {
+  try {
+    ctx.settings.register(SETTINGS_NAMESPACE, WALLPAPER_SETTINGS_SCHEMA)
+  } catch (error) {
+    console.error('[we-wallpaper] settings namespace registration failed:', error)
+  }
   const routes = makeWeWallpaperRoutes()
   try {
     ctx.effect(() => {
@@ -50,7 +86,12 @@ export function apply(ctx: Context): void {
         for (const dispose of disposers) dispose()
         throw error
       }
-      return () => { for (const dispose of disposers) dispose() }
+      return () => {
+        for (const dispose of disposers) dispose()
+        // Never leave the temporary recorder or WE capture window alive when
+        // the host unloads or restarts this plugin.
+        disposeSceneVideoCapture()
+      }
     }, 'we-wallpaper: routes')
   } catch (error) {
     console.error('[we-wallpaper] route registration failed:', error)

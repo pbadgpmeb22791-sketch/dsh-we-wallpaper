@@ -13,9 +13,6 @@ export interface WeState {
   translucency: number
   fit: 'cover' | 'contain'
   sharpen: number
-  sceneMode: 'animated-first' | 'static-hd'
-  repkgPath: string
-  /** Deprecated host compatibility field. */
   animatedPreviews: boolean
 }
 
@@ -26,9 +23,7 @@ export const DEFAULT_STATE: WeState = {
   translucency: 50,
   fit: 'cover',
   sharpen: 40,
-  sceneMode: 'animated-first',
-  repkgPath: '',
-  animatedPreviews: true,
+  animatedPreviews: false,
 }
 
 const API = '/api/we-wallpaper'
@@ -85,12 +80,8 @@ export class WallpaperStateStore {
     this.writeSoon({ sharpen: value })
   }
 
-  setSceneMode(value: 'animated-first' | 'static-hd'): void {
-    void this.write({ sceneMode: value, animatedPreviews: value === 'animated-first' })
-  }
-
-  setRePkgPath(value: string): void {
-    this.writeSoon({ repkgPath: value }, 350)
+  setAnimatedPreviews(value: boolean): void {
+    void this.write({ animatedPreviews: value })
   }
 
   /** Trailing-edge debounce state for option writes. */
@@ -145,14 +136,6 @@ export class WallpaperStateStore {
 
 /** Clamp/coerce one raw section (mirrors the host normalizeState). */
 export function normalize(raw: WeState): WeState {
-  const record = raw as unknown as Record<string, unknown>
-  const sceneMode = record.sceneMode === 'static-hd'
-    ? 'static-hd'
-    : record.sceneMode === 'animated-first'
-      ? 'animated-first'
-      : record.animatedPreviews === false
-        ? 'static-hd'
-        : 'animated-first'
   return {
     selectedId: typeof raw.selectedId === 'string' ? raw.selectedId : DEFAULT_STATE.selectedId,
     scrim: typeof raw.scrim === 'number' && Number.isFinite(raw.scrim)
@@ -165,8 +148,6 @@ export function normalize(raw: WeState): WeState {
     sharpen: typeof raw.sharpen === 'number' && Number.isFinite(raw.sharpen)
       ? Math.max(0, Math.min(100, Math.round(raw.sharpen)))
       : DEFAULT_STATE.sharpen,
-    sceneMode,
-    repkgPath: typeof record.repkgPath === 'string' ? record.repkgPath.trim().slice(0, 2048) : '',
-    animatedPreviews: sceneMode === 'animated-first',
+    animatedPreviews: raw.animatedPreviews === true,
   }
 }

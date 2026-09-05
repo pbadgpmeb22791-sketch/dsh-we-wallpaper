@@ -77,12 +77,10 @@ export function apply(ctx: ClientContext): void {
   // The card: live state + actions over the same store.
   const card = new WallpaperCardController(store)
   void card.refresh()
-  // dsh 2.x dispatches `settings.plugin.item` as a keyed slot: the key must be
-  // the settings namespace the card edits, and the Host must serve that
-  // namespace (registered in the host half) for the card to be rendered.
   ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
     name: 'settings.plugin.item',
-    key: 'we-wallpaper',
+    id: 'we-wallpaper',
+    order: 120,
     locale: NS,
     inject: (): WallpaperCardFace => card.inject(),
   }, WallpaperCard))

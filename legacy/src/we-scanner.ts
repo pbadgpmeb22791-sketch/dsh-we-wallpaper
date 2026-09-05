@@ -65,10 +65,7 @@ export type RegQuery = (key: string, name: string) => string | null
 /** Spawn `reg.exe` and read one value; null when the key/value is absent. */
 export function regQueryDefault(key: string, name: string): string | null {
   try {
-    // The packaged desktop host runs with a minimal PATH where bare `reg`
-    // cannot be resolved; always address reg.exe through System32.
-    const windir = process.env.SystemRoot ?? process.env.windir ?? 'C:\\Windows'
-    const out = spawnSync(join(windir, 'System32', 'reg.exe'), ['query', key, '/v', name], {
+    const out = spawnSync('reg', ['query', key, '/v', name], {
       encoding: 'utf8',
       windowsHide: true,
       timeout: 5000,

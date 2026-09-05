@@ -13,6 +13,8 @@ import {
   findScenePkg,
   readCacheMeta,
   resolvePkgPreview,
+  resolvePkgPreviewDetailed,
+  runRePkgExtractor,
 } from '../src/pkg-preview.ts'
 import { buildPkg, buildTex, rgbaToPngFixture } from './pkg-helpers.ts'
 
@@ -66,10 +68,10 @@ describe('resolvePkgPreview', () => {
     expect(existsSync(cachedFilePath(ID, home))).toBe(true)
     expect(readCacheMeta(ID, home)).toMatchObject({ mime: 'image/png', width: 16, height: 9 })
 
-    // Cache hit: removing the source package must not break the second read.
-    rmSync(join(workshopDir, ID), { recursive: true, force: true })
+    // Cache hit: the unchanged package must not be decoded again.
     const second = resolvePkgPreview(ID, [workshopDir], { home })
     expect(second?.file).toBe(first?.file)
+    expect(second?.cacheHit).toBe(true)
   })
 
   it('returns null when the package is missing or undecodable', () => {
@@ -95,5 +97,55 @@ describe('resolvePkgPreview', () => {
     const bytes = readFileSync(preview!.file)
     expect(bytes[0]).toBe(0x89)
     expect(bytes[1]).toBe(0x50)
+  })
+
+  it('reports RePKG missing, failed and timed out without throwing', () => {
+    writeScenePkg()
+    const pkgPath = join(workshopDir, ID, 'scene.pkg')
+    const output = join(home, 'repkg-output')
+    expect(runRePkgExtractor('', pkgPath, output, null).reason).toBe('repkg-not-configured')
+    expect(runRePkgExtractor(join(home, 'missing.exe'), pkgPath, output, null).reason)
+      .toBe('repkg-executable-not-found')
+
+    const fakeExe = join(home, 'RePKG.exe')
+    writeFileSync(fakeExe, '')
+    expect(runRePkgExtractor(fakeExe, pkgPath, output, null, () => ({ status: 2 })).reason)
+      .toBe('repkg-extract-failed')
+    expect(runRePkgExtractor(fakeExe, pkgPath, output, null, () => ({
+      status: null,
+      error: new Error('operation timeout'),
+    })).reason).toBe('repkg-timeout')
+  })
+
+  it('passes RePKG arguments without a shell and prefers the scene texture name', () => {
+    writeScenePkg()
+    const pkgPath = join(workshopDir, ID, 'scene.pkg')
+    const output = join(home, 'repkg-success')
+    const fakeExe = join(home, 'RePKG.exe')
+    writeFileSync(fakeExe, '')
+    let commandSeen = ''
+    let argsSeen: string[] = []
+    const result = runRePkgExtractor(fakeExe, pkgPath, output, 'materials/背景.tex', (command, args) => {
+      commandSeen = command
+      argsSeen = args
+      const outputIndex = args.indexOf('-o')
+      const outputDir = args[outputIndex + 1]
+      mkdirSync(outputDir, { recursive: true })
+      writeFileSync(join(outputDir, '背景.png'), rgbaToPngFixture(16, 9, new Uint8Array(16 * 9 * 4)))
+      writeFileSync(join(outputDir, 'larger-foreground.png'), rgbaToPngFixture(64, 64, new Uint8Array(64 * 64 * 4)))
+      return { status: 0 }
+    })
+    expect(commandSeen).toBe(fakeExe)
+    expect(argsSeen).toEqual(['extract', '-e', 'tex', '-s', '-o', output, '--overwrite', pkgPath])
+    expect(result).toMatchObject({ selectedTex: 'materials/背景.tex', reason: null })
+    expect(result.image).toMatchObject({ width: 16, height: 9, mime: 'image/png' })
+  })
+
+  it('diagnoses the built-in heuristic fallback', () => {
+    writeScenePkg()
+    const result = resolvePkgPreviewDetailed(ID, [workshopDir], { home, sceneMode: 'animated-first' })
+    expect(result.preview?.source).toBe('heuristic')
+    expect(result.diagnostics.fallbackReason).toContain('repkg-not-configured')
+    expect(result.diagnostics.cacheHit).toBe(false)
   })
 })

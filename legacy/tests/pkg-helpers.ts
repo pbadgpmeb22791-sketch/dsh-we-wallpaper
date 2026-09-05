@@ -19,9 +19,8 @@ function nstr(out: number[], text: string): void {
 
 /** Append a length-prefixed string. */
 function lstr(out: number[], text: string): void {
-  const bytes = new TextEncoder().encode(text)
-  u32(out, bytes.length)
-  for (const byte of bytes) out.push(byte)
+  u32(out, text.length)
+  for (let i = 0; i < text.length; i++) out.push(text.charCodeAt(i) & 0xff)
 }
 
 export interface TexSpec {
@@ -71,28 +70,14 @@ export function buildTex(spec: TexSpec): Uint8Array {
  * @param entryName - the entry's path inside the package.
  */
 export function buildPkg(tex: Uint8Array, entryName = 'materials/background.tex'): Uint8Array {
-  return buildPkgEntries([{ name: entryName, data: tex }])
-}
-
-/** Build a package with arbitrary JSON/TEX entries and relative offsets. */
-export function buildPkgEntries(entries: Array<{ name: string; data: Uint8Array }>, magic = 'PKGV0001'): Uint8Array {
   const out: number[] = []
-  lstr(out, magic)
-  u32(out, entries.length)
-  let offset = 0
-  for (const entry of entries) {
-    lstr(out, entry.name)
-    u32(out, offset)
-    u32(out, entry.data.length)
-    offset += entry.data.length
-  }
-  for (const entry of entries) for (const byte of entry.data) out.push(byte)
+  lstr(out, 'PKGV0001')
+  u32(out, 1) // entryCount
+  lstr(out, entryName)
+  u32(out, 0) // data offset (relative to dataStart)
+  u32(out, tex.length)
+  for (const b of tex) out.push(b)
   return Uint8Array.from(out)
-}
-
-/** UTF-8 JSON fixture bytes. */
-export function jsonBytes(value: unknown): Uint8Array {
-  return new TextEncoder().encode(JSON.stringify(value))
 }
 
 /** Encode RGBA pixels as PNG (reused by tests to validate round-trips). */

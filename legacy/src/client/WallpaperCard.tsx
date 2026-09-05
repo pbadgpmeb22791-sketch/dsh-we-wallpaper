@@ -33,10 +33,8 @@ export interface WallpaperCardState {
   translucency: number
   fit: 'cover' | 'contain'
   sharpen: number
-  /** Scene wallpaper rendering preference. */
-  sceneMode: 'animated-first' | 'static-hd'
-  /** Optional local RePKG executable path. */
-  repkgPath: string
+  /** Scene wallpapers: prefer the animated local GIF over the HD preview. */
+  animatedPreviews: boolean
   /** Last load error (display only). */
   error: string | null
 }
@@ -59,10 +57,8 @@ export interface WallpaperCardFace {
   setFit: (fit: 'cover' | 'contain') => void
   /** Set the preview sharpening 0-100. */
   setSharpen: (value: number) => void
-  /** Set scene wallpaper rendering preference. */
-  setSceneMode: (value: 'animated-first' | 'static-hd') => void
-  /** Set the optional local RePKG executable path. */
-  setRePkgPath: (value: string) => void
+  /** Scene wallpapers: prefer the animated (blurry) local GIF over the HD preview. */
+  setAnimatedPreviews: (value: boolean) => void
 }
 
 /** Controller: owns the state, talks to the shared store and the host API. */
@@ -77,8 +73,7 @@ export class WallpaperCardController implements HostObservable<WallpaperCardStat
     translucency: 50,
     fit: 'cover',
     sharpen: 40,
-    sceneMode: 'animated-first',
-    repkgPath: '',
+    animatedPreviews: false,
     error: null,
   }
   private readonly listeners = new Set<() => void>()
@@ -104,8 +99,7 @@ export class WallpaperCardController implements HostObservable<WallpaperCardStat
       setTranslucency: (value) => this.store.setTranslucency(value),
       setFit: (fit) => this.store.setFit(fit),
       setSharpen: (value) => this.store.setSharpen(value),
-      setSceneMode: (value) => this.store.setSceneMode(value),
-      setRePkgPath: (value) => this.store.setRePkgPath(value),
+      setAnimatedPreviews: (value) => this.store.setAnimatedPreviews(value),
     }
   }
 
@@ -131,8 +125,7 @@ export class WallpaperCardController implements HostObservable<WallpaperCardStat
       translucency: state.translucency,
       fit: state.fit,
       sharpen: state.sharpen,
-      sceneMode: state.sceneMode,
-      repkgPath: state.repkgPath,
+      animatedPreviews: state.animatedPreviews,
     }
   }
 
@@ -285,31 +278,14 @@ export function WallpaperCard(props: WallpaperCardProps) {
             onChange={(event) => props.setSharpen(Number(event.target.value))}
           />
         </div>
-        <div className="dsh-we-card-control">
-          <label htmlFor="dsh-we-scene-mode" title={t('card.option.sceneModeHint')}>
-            {t('card.option.sceneMode')}
-          </label>
-          <select
-            id="dsh-we-scene-mode"
-            value={state.sceneMode}
-            onChange={(event) => props.setSceneMode(event.target.value as 'animated-first' | 'static-hd')}
-          >
-            <option value="animated-first">{t('card.option.sceneMode.animated')}</option>
-            <option value="static-hd">{t('card.option.sceneMode.static')}</option>
-          </select>
-        </div>
-        <div className="dsh-we-card-control">
-          <label htmlFor="dsh-we-repkg" title={t('card.option.repkgHint')}>
-            {t('card.option.repkg')}
-          </label>
+        <label className="dsh-we-card-check" title={t('card.option.animatedHint')}>
           <input
-            id="dsh-we-repkg"
-            type="text"
-            value={state.repkgPath}
-            placeholder="C:\\Tools\\RePKG.exe"
-            onChange={(event) => props.setRePkgPath(event.target.value)}
+            type="checkbox"
+            checked={state.animatedPreviews}
+            onChange={(event) => props.setAnimatedPreviews(event.target.checked)}
           />
-        </div>
+          {t('card.option.animated')}
+        </label>
       </div>
 
       <div className="dsh-we-card-search">

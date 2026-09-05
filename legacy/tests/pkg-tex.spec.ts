@@ -10,13 +10,11 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeTexEntry,
   extractBackgroundPng,
-  extractBackgroundWithDiagnostics,
-  findSceneBackgroundTextures,
   lz4BlockDecode,
   parsePackage,
   rgbaToPng,
 } from '../src/pkg-tex.ts'
-import { buildPkg, buildPkgEntries, buildTex, jsonBytes, rgbaToPngFixture } from './pkg-helpers.ts'
+import { buildPkg, buildTex } from './pkg-helpers.ts'
 
 describe('parsePackage', () => {
   it('parses the magic, table and relative offsets', () => {
@@ -42,9 +40,6 @@ describe('parsePackage', () => {
   it('rejects truncated / invalid packages', () => {
     expect(parsePackage(new Uint8Array(4))).toBeNull()
     expect(parsePackage(buildPkg(new Uint8Array(0)))).not.toBeNull()
-    const outOfBounds = buildPkg(new Uint8Array([1, 2, 3]))
-    outOfBounds[outOfBounds.length - 4] = 0xff
-    expect(parsePackage(outOfBounds)).toBeNull()
   })
 })
 
@@ -187,44 +182,6 @@ describe('rgbaToPng', () => {
 })
 
 describe('extractBackgroundPng', () => {
-  it('follows scene -> model -> material and selects the full-screen background', () => {
-    // The TEX mipmap dimensions carry the real size; tiny PNG bytes keep the
-    // regression fixture fast and in-memory.
-    const backgroundPng = rgbaToPngFixture(1, 1, new Uint8Array(4))
-    const foregroundPng = rgbaToPngFixture(1, 1, new Uint8Array(4))
-    const pkg = buildPkgEntries([
-      { name: 'scene.json', data: jsonBytes({
-        general: { orthogonalprojection: { width: 3840, height: 2160 } },
-        objects: [
-          { name: '背景', image: 'models/背景.json', size: '3840 2160', parallaxDepth: '0 0' },
-          { name: 'Miku', image: 'models/导出初音.json', size: '4862 3288', parallaxDepth: '0.02 0.02' },
-        ],
-      }) },
-      { name: 'models/背景.json', data: jsonBytes({ material: 'materials/背景.json' }) },
-      { name: 'materials/背景.json', data: jsonBytes({ passes: [{ textures: ['背景'] }] }) },
-      { name: 'models/导出初音.json', data: jsonBytes({ material: 'materials/导出初音.json' }) },
-      { name: 'materials/导出初音.json', data: jsonBytes({ passes: [{ textures: ['导出初音'] }] }) },
-      { name: 'materials/背景.tex', data: buildTex({
-        format: 0, textureWidth: 3840, textureHeight: 2160, imageWidth: 3840, imageHeight: 2160,
-        imageFormat: 13, data: backgroundPng,
-      }) },
-      { name: 'materials/导出初音.tex', data: buildTex({
-        format: 0, textureWidth: 4862, textureHeight: 3288, imageWidth: 4862, imageHeight: 3288,
-        imageFormat: 13, data: foregroundPng,
-      }) },
-    ], 'PKGV0021')
-    const parsed = parsePackage(pkg)!
-    expect(findSceneBackgroundTextures(pkg, parsed)[0]).toBe('materials/背景.tex')
-    const result = extractBackgroundWithDiagnostics(pkg)
-    expect(result).toMatchObject({
-      width: 3840,
-      height: 2160,
-      source: 'scene-graph',
-      selectedTex: 'materials/背景.tex',
-      packageMagic: 'PKGV0021',
-    })
-  })
-
   it('picks the landscape texture over a portrait one', () => {
     // Portrait 200x600 (character) vs landscape 800x450 (background): the
     // aspect scoring must pick the landscape one.

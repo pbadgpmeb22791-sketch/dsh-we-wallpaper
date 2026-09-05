@@ -161,7 +161,7 @@ export class WallpaperLayer {
   /** Monotonic render sequence: a superseded async render must not touch the DOM. */
   private renderSeq = 0
 
-  /** The wallpaper id the current media element plays ('' = none). */
+  /** The wallpaper + scene mode key the current media element plays. */
   private mediaId = ''
 
   /**
@@ -186,9 +186,6 @@ export class WallpaperLayer {
       if (this.mediaId !== '') this.clearMedia()
       return
     }
-    // Same wallpaper: keep the running element (no re-stream, no re-decode).
-    if (this.mediaId === settings.selectedId && this.media !== null) return
-
     let metas = await this.ensureMetas()
     let meta = metas?.get(settings.selectedId)
     // The selection may predate this session's scan; one refetch covers
@@ -203,7 +200,12 @@ export class WallpaperLayer {
       if (this.mediaId !== '') this.clearMedia()
       return
     }
-    this.renderMedia(meta)
+    const mediaKey = meta.type === 'scene' || meta.type === 'other'
+      ? `${settings.selectedId}:${settings.sceneMode}`
+      : settings.selectedId
+    // Same wallpaper and rendering mode: keep the running decoder.
+    if (this.mediaId === mediaKey && this.media !== null) return
+    this.renderMedia(meta, mediaKey)
   }
 
   /** Fetch the library (cached per mount); returns the current map. */
@@ -223,16 +225,16 @@ export class WallpaperLayer {
 
   /**
    * Swap in the media element for one wallpaper (only called on id change).
-   * The `animatedPreviews` option only affects scene/application wallpapers:
-   * the tiny local GIF is the loading + offline fallback layer, and the sharp
-   * Steam workshop preview (when the host can fetch it) renders on top.
+   * Animated-first uses the local GIF/video-like preview and loads the exact
+   * scene.pkg background only if that preview fails. Static-HD loads the
+   * extracted background immediately, keeping the preview underneath.
    */
-  private renderMedia(meta: WallpaperListItem): void {
+  private renderMedia(meta: WallpaperListItem, mediaKey: string): void {
     this.clearMedia()
     const root = this.root
     if (root === null) return
     const id = encodeURIComponent(meta.id)
-    const animated = this.store.getSnapshot().animatedPreviews
+    const sceneMode = this.store.getSnapshot().sceneMode
     let element: HTMLElement
 
     if (meta.type === 'video') {
@@ -261,34 +263,119 @@ export class WallpaperLayer {
       image.alt = meta.title
       element = image
     } else {
-      // Scene / application / other: the GIF preview is the base layer.
-      const gif = document.createElement('img')
-      gif.src = `${API}/preview/${id}`
-      gif.alt = meta.title
-      root.appendChild(gif)
-      this.media = gif
-      this.mediaId = meta.id
+      if (meta.type === 'scene' && sceneMode === 'animated-first') {
+        this.renderSceneVideo(meta, mediaKey, id)
+        return
+      }
+      // Scene / application / other: animated preview is the base layer.
+      const preview = meta.previewKind === 'video'
+        ? document.createElement('video')
+        : document.createElement('img')
+      preview.src = `${API}/preview/${id}`
+      if (preview instanceof HTMLVideoElement) {
+        preview.autoplay = true
+        preview.muted = true
+        preview.loop = true
+        preview.playsInline = true
+        preview.preload = 'auto'
+        preview.disablePictureInPicture = true
+      } else {
+        preview.alt = meta.title
+      }
+      root.appendChild(preview)
+      this.media = preview
+      this.mediaId = mediaKey
 
-      // Extracted scene.pkg background on top (workshop items only): the
-      // host decodes the sharpest landscape texture from scene.pkg into a
-      // PNG/JPEG and caches it; on error the GIF underneath keeps showing.
-      if (!animated && meta.workshopId !== null) {
+      const appendHdFallback = (): void => {
+        if (meta.workshopId === null || root.querySelector('[data-we-pkg-hd]') !== null) return
         const hd = document.createElement('img')
+        hd.dataset.wePkgHd = 'true'
         hd.src = `${API}/pkg/${id}`
         hd.alt = meta.title
         hd.addEventListener('error', () => { hd.remove() })
         hd.addEventListener('load', () => {
-          // Once the sharp frame is in, the blurry GIF adds nothing.
-          if (gif.isConnected) gif.style.display = 'none'
+          if (preview.isConnected) preview.style.display = 'none'
         })
         root.appendChild(hd)
       }
+
+      preview.addEventListener('error', appendHdFallback, { once: true })
+
+      if (sceneMode === 'static-hd') appendHdFallback()
       return
     }
 
     root.appendChild(element)
     this.media = element
-    this.mediaId = meta.id
+    this.mediaId = mediaKey
+  }
+
+  /** Play (or generate once) the cached high-resolution animated scene loop. */
+  private renderSceneVideo(meta: WallpaperListItem, mediaKey: string, encodedId: string): void {
+    const root = this.root
+    if (root === null) return
+    const video = document.createElement('video')
+    video.src = `${API}/scene-video/media/${encodedId}`
+    video.poster = `${API}/pkg/${encodedId}`
+    video.autoplay = true
+    video.muted = true
+    video.loop = true
+    video.playsInline = true
+    video.preload = 'auto'
+    video.disablePictureInPicture = true
+    root.appendChild(video)
+    this.media = video
+    this.mediaId = mediaKey
+
+    let generationStarted = false
+    let generatedSourceLoaded = false
+    const stillCurrent = (): boolean => this.media === video && this.mediaId === mediaKey && video.isConnected
+    const fallbackPreview = (): void => {
+      if (!stillCurrent()) return
+      const preview = document.createElement('img')
+      preview.src = `${API}/preview/${encodedId}`
+      preview.alt = meta.title
+      video.replaceWith(preview)
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+      this.media = preview
+    }
+    const poll = (): void => {
+      if (!stillCurrent()) return
+      void fetch(`${API}/scene-video/status/${encodedId}`).then(async (response) => {
+        const result = await response.json() as { status?: { phase?: string } }
+        if (!stillCurrent()) return
+        const phase = result.status?.phase
+        if (phase === 'ready') {
+          generatedSourceLoaded = true
+          video.src = `${API}/scene-video/media/${encodedId}?v=${Date.now()}`
+          video.load()
+          void video.play().catch(() => {})
+        } else if (phase === 'error') {
+          fallbackPreview()
+        } else {
+          window.setTimeout(poll, 1000)
+        }
+      }).catch(() => window.setTimeout(poll, 1500))
+    }
+    video.addEventListener('error', () => {
+      if (!stillCurrent()) return
+      if (generatedSourceLoaded) {
+        fallbackPreview()
+        return
+      }
+      if (generationStarted) return
+      generationStarted = true
+      void fetch(`${API}/scene-video/generate/${encodedId}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }).then((response) => {
+        if (!response.ok) fallbackPreview()
+        else poll()
+      }).catch(fallbackPreview)
+    })
   }
 
   /**

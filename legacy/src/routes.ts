@@ -9,9 +9,6 @@
  *   GET  /api/we-wallpaper/hd/<id>       — the Steam workshop HD preview (cached)
  *   GET  /api/we-wallpaper/media/<id>    — the main media file (video/image/audio)
  *   GET  /api/we-wallpaper/web/<id>/<path> — static files of a web wallpaper
- *   POST /api/we-wallpaper/scene-video/generate/<id> — build cached HD loop
- *   GET  /api/we-wallpaper/scene-video/status/<id>   — generation status
- *   GET  /api/we-wallpaper/scene-video/media/<id>    — cached HD loop
  *
  * The selection persists in `~/.dsh/we-wallpaper.json` (src/state.ts).
  * Every route rejects cross-site requests (Sec-Fetch-Site / Origin fence) so
@@ -24,8 +21,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, join, resolve, sep } from 'node:path'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { getSceneVideoStatus, requestSceneVideo } from './scene-video.ts'
-import { resolvePkgPreview, resolvePkgPreviewDetailed } from './pkg-preview.ts'
+import { resolvePkgPreview } from './pkg-preview.ts'
 import { readState, writeState } from './state.ts'
 import {
   discoverWeInstall,
@@ -358,14 +354,6 @@ export function makeWeWallpaperRoutes(): WebRoute[] {
         root: install?.root ?? null,
         count: wallpapers.length,
         wallpapers: wallpapers.map((entry) => ({
-          previewKind: (() => {
-            const preview = previewFileOf(entry)
-            return preview !== null && ['.mp4', '.webm', '.mov', '.m4v'].includes(extname(preview).toLowerCase())
-              ? 'video'
-              : preview === null
-                ? 'none'
-                : 'image'
-          })(),
           id: entry.id,
           title: entry.title,
           type: entry.type,
@@ -375,62 +363,6 @@ export function makeWeWallpaperRoutes(): WebRoute[] {
         })),
       })
     }),
-
-    // --- cached high-resolution scene animation --------------------------
-    // WE scenes have no export timeline.  On first use the host records a
-    // short native render through Windows.Graphics.Capture; later requests
-    // stream the cached H.264 loop just like a normal video wallpaper.
-    {
-      kind: 'prefix',
-      path: `${WE_API_PREFIX}/scene-video/generate`,
-      handler: (req, res) => {
-        if (req.method !== 'POST') {
-          json(res, 405, { ok: false, error: 'method-not-allowed' })
-          return Promise.resolve()
-        }
-        if (!requireSameOrigin(req, res)) return Promise.resolve()
-        const rawId = req.url?.slice(`${WE_API_PREFIX}/scene-video/generate/`.length).split('?')[0] ?? ''
-        const entry = resolveEntry(req, res, rawId)
-        if (entry === null) return Promise.resolve()
-        const { install } = loadScan()
-        if (install === null) {
-          json(res, 503, { ok: false, error: 'wallpaper-engine-not-found' })
-          return Promise.resolve()
-        }
-        const status = requestSceneVideo(entry, install)
-        json(res, status.phase === 'error' ? 503 : 202, { ok: status.phase !== 'error', status })
-        return Promise.resolve()
-      },
-    },
-    {
-      kind: 'prefix',
-      path: `${WE_API_PREFIX}/scene-video/status`,
-      handler: (req, res) => {
-        if (!requireMethod(req, res)) return
-        if (!requireSameOrigin(req, res)) return
-        const rawId = req.url?.slice(`${WE_API_PREFIX}/scene-video/status/`.length).split('?')[0] ?? ''
-        const entry = resolveEntry(req, res, rawId)
-        if (entry === null) return
-        json(res, 200, { ok: true, status: getSceneVideoStatus(entry) })
-      },
-    },
-    {
-      kind: 'prefix',
-      path: `${WE_API_PREFIX}/scene-video/media`,
-      handler: (req, res) => {
-        if (!requireMethod(req, res)) return
-        if (!requireSameOrigin(req, res)) return
-        const rawId = req.url?.slice(`${WE_API_PREFIX}/scene-video/media/`.length).split('?')[0] ?? ''
-        const entry = resolveEntry(req, res, rawId)
-        if (entry === null) return
-        const status = getSceneVideoStatus(entry)
-        if (status.phase !== 'ready' || status.file === null) {
-          json(res, 404, { ok: false, error: 'scene-video-not-ready', status })
-          return
-        }
-        serveFile(req, res, status.file, 'public, max-age=86400')
-      },
-    },
 
     // --- preview image ---------------------------------------------------
     {
@@ -490,12 +422,8 @@ export function makeWeWallpaperRoutes(): WebRoute[] {
           return
         }
         const { install } = loadScan()
-        const state = readState()
         const preview = install !== null
-          ? resolvePkgPreview(entry.workshopId, install.workshops, {
-              sceneMode: state.sceneMode,
-              repkgPath: state.repkgPath,
-            })
+          ? resolvePkgPreview(entry.workshopId, install.workshops)
           : null
         if (preview === null || !existsSync(preview.file)) {
           json(res, 404, { ok: false, error: 'pkg-preview-unavailable' })
@@ -506,64 +434,8 @@ export function makeWeWallpaperRoutes(): WebRoute[] {
           'content-length': String(statSync(preview.file).size),
           'cache-control': 'public, max-age=2592000',
           'x-we-preview-kind': 'image',
-          'x-we-preview-source': preview.source,
-          'x-we-selected-texture': encodeURIComponent(preview.selectedTex ?? ''),
         })
         createReadStream(preview.file).pipe(res)
-      },
-    },
-
-    // --- read-only extraction diagnostics -------------------------------
-    {
-      kind: 'prefix',
-      path: `${WE_API_PREFIX}/diagnostics`,
-      handler: (req, res) => {
-        if (!requireMethod(req, res)) return
-        if (!requireSameOrigin(req, res)) return
-        const rawId = req.url?.slice(`${WE_API_PREFIX}/diagnostics/`.length).split('?')[0] ?? ''
-        const entry = resolveEntry(req, res, rawId)
-        if (entry === null) return
-        if (entry.workshopId === null) {
-          json(res, 200, {
-            ok: true,
-            id: entry.id,
-            type: entry.type,
-            sceneVideo: getSceneVideoStatus(entry),
-            diagnostics: { pkgFound: false, fallbackReason: 'not-a-workshop-scene' },
-          })
-          return
-        }
-        const { install } = loadScan()
-        if (install === null) {
-          json(res, 200, {
-            ok: true,
-            id: entry.id,
-            type: entry.type,
-            sceneVideo: getSceneVideoStatus(entry),
-            diagnostics: { pkgFound: false, fallbackReason: 'wallpaper-engine-not-found' },
-          })
-          return
-        }
-        const state = readState()
-        const resolution = resolvePkgPreviewDetailed(entry.workshopId, install.workshops, {
-          sceneMode: state.sceneMode,
-          repkgPath: state.repkgPath,
-        })
-        json(res, 200, {
-          ok: true,
-          id: entry.id,
-          type: entry.type,
-          sceneMode: state.sceneMode,
-          sceneVideo: getSceneVideoStatus(entry),
-          preview: resolution.preview === null
-            ? null
-            : {
-                mime: resolution.preview.mime,
-                width: resolution.preview.width,
-                height: resolution.preview.height,
-              },
-          diagnostics: resolution.diagnostics,
-        })
       },
     },
 

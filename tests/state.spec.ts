@@ -22,7 +22,7 @@ afterEach(() => {
 describe('normalizeState', () => {
   it('applies defaults to an empty section', () => {
     expect(normalizeState({})).toEqual({ selectedId: '', scrim: 25, translucency: 50, fit: 'cover', sharpen: 40,
-      animatedPreviews: false,
+      sceneMode: 'animated-first', repkgPath: '', animatedPreviews: true,
     })
   })
 
@@ -33,7 +33,7 @@ describe('normalizeState', () => {
       translucency: 0,
       fit: 'cover',
       sharpen: 40,
-      animatedPreviews: false,
+      sceneMode: 'animated-first', repkgPath: '', animatedPreviews: true,
     })
     expect(normalizeState({ fit: 'contain', sharpen: 99 }).fit).toBe('contain')
     expect(normalizeState({ sharpen: 250 }).sharpen).toBe(100)
@@ -47,7 +47,7 @@ describe('normalizeState', () => {
       translucency: 50,
       fit: 'cover',
       sharpen: 40,
-      animatedPreviews: false,
+      sceneMode: 'animated-first', repkgPath: '', animatedPreviews: true,
     })
     expect(normalizeState('junk').selectedId).toBe('')
   })
@@ -56,7 +56,7 @@ describe('normalizeState', () => {
 describe('readState / writeState', () => {
   it('returns defaults when no state file exists', () => {
     expect(readState(home)).toEqual({ selectedId: '', scrim: 25, translucency: 50, fit: 'cover', sharpen: 40,
-      animatedPreviews: false,
+      sceneMode: 'animated-first', repkgPath: '', animatedPreviews: true,
     })
   })
 
@@ -72,7 +72,7 @@ describe('readState / writeState', () => {
     writeState({ selectedId: '111', fit: 'contain' }, home)
     const next = writeState({ translucency: 30 }, home)
     expect(next).toEqual({ selectedId: '111', scrim: 25, translucency: 30, fit: 'contain', sharpen: 40,
-      animatedPreviews: false,
+      sceneMode: 'animated-first', repkgPath: '', animatedPreviews: true,
     })
     // Atomic write: no temp file left behind.
     expect(readFileSync(stateFilePath(home), 'utf8')).not.toContain('.tmp')
@@ -81,7 +81,18 @@ describe('readState / writeState', () => {
   it('falls back to defaults on a corrupted file', () => {
     writeFileSync(stateFilePath(home), '{broken json', 'utf8')
     expect(readState(home)).toEqual({ selectedId: '', scrim: 25, translucency: 50, fit: 'cover', sharpen: 40,
-      animatedPreviews: false,
+      sceneMode: 'animated-first', repkgPath: '', animatedPreviews: true,
     })
+  })
+
+  it('migrates legacy animatedPreviews and mirrors the compatibility field', () => {
+    expect(normalizeState({ animatedPreviews: false })).toMatchObject({
+      sceneMode: 'static-hd', animatedPreviews: false,
+    })
+    expect(normalizeState({ animatedPreviews: true })).toMatchObject({
+      sceneMode: 'animated-first', animatedPreviews: true,
+    })
+    writeState({ animatedPreviews: false }, home)
+    expect(readState(home).sceneMode).toBe('static-hd')
   })
 })

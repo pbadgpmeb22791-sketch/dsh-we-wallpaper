@@ -67,16 +67,6 @@ export interface BackgroundImage {
   height: number
 }
 
-/** How the extractor selected the texture. */
-export type BackgroundSelectionSource = 'scene-graph' | 'heuristic'
-
-/** Background bytes plus selection diagnostics. */
-export interface BackgroundExtraction extends BackgroundImage {
-  source: BackgroundSelectionSource
-  selectedTex: string
-  packageMagic: string
-}
-
 /** Parse the package directory table. Null when the layout is unsupported. */
 export function parsePackage(buf: Uint8Array): PkgFile | null {
   if (buf.length < 16) return null
@@ -99,12 +89,7 @@ export function parsePackage(buf: Uint8Array): PkgFile | null {
     pos += 4 + nameLen + 8
   }
   const dataStart = pos
-  for (const entry of entries) {
-    entry.abs = dataStart + entry.offset
-    // Reject the whole table when an entry points outside the package. This
-    // prevents malformed offsets from being reused by JSON/TEX decoders.
-    if (!Number.isSafeInteger(entry.abs) || entry.abs < dataStart || entry.abs + entry.length > buf.length) return null
-  }
+  for (const entry of entries) entry.abs = dataStart + entry.offset
   return { magic, entries, dataStart, size: buf.length }
 }
 
@@ -563,141 +548,7 @@ export function decodeTexEntry(buf: Uint8Array, texAbs: number, header: { format
 }
 
 /**
- * Normalize a package-internal path for case-insensitive matching.
- */
-function normalizePkgPath(value: string): string {
-  return value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+/g, '/').toLowerCase()
-}
-
-/** Parse one bounded JSON package entry. */
-function parseJsonEntry(buf: Uint8Array, entry: PkgEntry | undefined): Record<string, unknown> | null {
-  if (entry === undefined || entry.length <= 0 || entry.length > 16 * 1024 * 1024) return null
-  try {
-    const raw: unknown = JSON.parse(utf8(buf, entry.abs, entry.abs + entry.length).replace(/^\uFEFF/, ''))
-    return typeof raw === 'object' && raw !== null && !Array.isArray(raw)
-      ? raw as Record<string, unknown>
-      : null
-  } catch {
-    return null
-  }
-}
-
-/** Parse a Wallpaper Engine vector string's first two finite values. */
-function vec2(value: unknown): [number, number] | null {
-  const parts = typeof value === 'string'
-    ? value.trim().split(/\s+/).map(Number)
-    : Array.isArray(value)
-      ? value.slice(0, 2).map(Number)
-      : []
-  return parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])
-    ? [parts[0], parts[1]]
-    : null
-}
-
-/** Wallpaper Engine visibility can be a boolean or a user-property object. */
-function isVisible(value: unknown): boolean {
-  if (value === false) return false
-  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-    return (value as Record<string, unknown>).value !== false
-  }
-  return true
-}
-
-/** Resolve a texture name from model -> material -> texture references. */
-function resolveModelTexture(
-  buf: Uint8Array,
-  entries: Map<string, PkgEntry>,
-  modelPath: string,
-): string | null {
-  const modelKey = normalizePkgPath(modelPath)
-  const model = parseJsonEntry(buf, entries.get(modelKey))
-  if (model === null || typeof model.material !== 'string') return null
-  const materialPath = normalizePkgPath(model.material)
-  const material = parseJsonEntry(buf, entries.get(materialPath))
-  if (material === null || !Array.isArray(material.passes)) return null
-  for (const pass of material.passes) {
-    if (typeof pass !== 'object' || pass === null || Array.isArray(pass)) continue
-    const textures = (pass as Record<string, unknown>).textures
-    if (!Array.isArray(textures)) continue
-    for (const texture of textures) {
-      if (typeof texture !== 'string' || texture.trim() === '') continue
-      const clean = normalizePkgPath(texture).replace(/\.tex$/i, '')
-      const materialDir = materialPath.includes('/') ? materialPath.slice(0, materialPath.lastIndexOf('/')) : ''
-      const candidates = [
-        `${materialDir}/${clean}.tex`,
-        `${clean}.tex`,
-        `materials/${clean}.tex`,
-      ].map(normalizePkgPath)
-      const matched = candidates.find(candidate => entries.has(candidate))
-      if (matched !== undefined) return entries.get(matched)?.name ?? null
-    }
-  }
-  return null
-}
-
-/**
- * Return scene-graph texture references in preference order. The score favors
- * visible image objects matching the orthographic canvas, neutral parallax,
- * early render order and explicit background/backdrop names.
- */
-export function findSceneBackgroundTextures(buf: Uint8Array, pkg: PkgFile): string[] {
-  const entries = new Map(pkg.entries.map(entry => [normalizePkgPath(entry.name), entry]))
-  const scene = parseJsonEntry(buf, entries.get('scene.json'))
-  if (scene === null || !Array.isArray(scene.objects)) return []
-  const objects = scene.objects
-  const general = typeof scene.general === 'object' && scene.general !== null && !Array.isArray(scene.general)
-    ? scene.general as Record<string, unknown>
-    : {}
-  const projection = typeof general.orthogonalprojection === 'object'
-    && general.orthogonalprojection !== null
-    && !Array.isArray(general.orthogonalprojection)
-    ? general.orthogonalprojection as Record<string, unknown>
-    : {}
-  const canvasWidth = typeof projection.width === 'number' && projection.width > 0 ? projection.width : 1920
-  const canvasHeight = typeof projection.height === 'number' && projection.height > 0 ? projection.height : 1080
-  const canvasRatio = canvasWidth / canvasHeight
-  const ranked: Array<{ texture: string; score: number }> = []
-
-  objects.forEach((raw, index) => {
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return
-    const object = raw as Record<string, unknown>
-    if (!isVisible(object.visible) || typeof object.image !== 'string') return
-    const imagePath = normalizePkgPath(object.image)
-    if (imagePath.includes('/util/') || imagePath.includes('composelayer') || imagePath.includes('fullscreenlayer')) return
-    const texture = resolveModelTexture(buf, entries, object.image)
-    if (texture === null) return
-    const size = vec2(object.size)
-    const width = Math.abs(size?.[0] ?? canvasWidth)
-    const height = Math.abs(size?.[1] ?? canvasHeight)
-    if (width <= 0 || height <= 0) return
-    const ratio = width / height
-    const sizeFit = Math.min(width / canvasWidth, canvasWidth / width)
-      * Math.min(height / canvasHeight, canvasHeight / height)
-    const ratioFit = Math.max(0, 1 - Math.abs(Math.log(ratio / canvasRatio)))
-    const parallax = vec2(object.parallaxDepth)
-    const neutralDepth = parallax !== null && Math.abs(parallax[0]) <= 0.001 && Math.abs(parallax[1]) <= 0.001 ? 0.5 : 0
-    const name = typeof object.name === 'string' ? object.name.toLowerCase() : ''
-    const nameBonus = /background|backdrop|背景|底图|背景图/.test(name) ? 4 : 0
-    const orderBonus = (objects.length - index) / Math.max(1, objects.length) * 0.1
-    ranked.push({ texture, score: nameBonus + sizeFit * 3 + ratioFit * 2 + neutralDepth + orderBonus })
-  })
-
-  ranked.sort((a, b) => b.score - a.score)
-  return [...new Set(ranked.map(item => item.texture))]
-}
-
-/** Decode one selected candidate to an image response. */
-function decodeCandidate(buf: Uint8Array, candidate: TexCandidate): BackgroundImage | null {
-  const decoded = decodeTexEntry(buf, candidate.abs, candidate)
-  if (decoded === null) return null
-  return decoded.kind === 'image'
-    ? { bytes: decoded.bytes, mime: decoded.mime, width: decoded.width, height: decoded.height }
-    : { bytes: rgbaToPng(decoded.width, decoded.height, decoded.rgba), mime: 'image/png', width: decoded.width, height: decoded.height }
-}
-
-/**
- * Extract the most background-like texture of a scene.pkg and report why it
- * was selected. Scene graph references win; aspect scoring is the fallback.
+ * Extract the most background-like texture of a scene.pkg.
  *
  * Scenes are a stack of textures (background, character, hair, masks) with
  * no direct "background" marker in scene.json, so the heuristic scores
@@ -707,27 +558,11 @@ function decodeCandidate(buf: Uint8Array, candidate: TexCandidate): BackgroundIm
  * FIF_JPEG) are returned as-is; raw formats are decoded and PNG-encoded.
  * Returns null when nothing decodes.
  */
-export function extractBackgroundWithDiagnostics(
-  buf: Uint8Array,
-  opts: { heuristic?: boolean } = {},
-): BackgroundExtraction | null {
+export function extractBackgroundPng(buf: Uint8Array): BackgroundImage | null {
   const pkg = parsePackage(buf)
   if (pkg === null) return null
   const candidates = findTexCandidates(buf, pkg)
-  const byName = new Map(candidates.map(candidate => [normalizePkgPath(candidate.name), candidate]))
-
-  for (const selectedTex of findSceneBackgroundTextures(buf, pkg)) {
-    const candidate = byName.get(normalizePkgPath(selectedTex))
-    if (candidate === undefined) continue
-    const decoded = decodeCandidate(buf, candidate)
-    if (decoded !== null) {
-      return { ...decoded, source: 'scene-graph', selectedTex: candidate.name, packageMagic: pkg.magic }
-    }
-  }
-
-  if (opts.heuristic === false) return null
-
-  let best: BackgroundExtraction | null = null
+  let best: BackgroundImage | null = null
   let bestScore = 0
   for (const candidate of candidates) {
     const width = candidate.imageWidth || candidate.textureWidth
@@ -737,17 +572,16 @@ export function extractBackgroundWithDiagnostics(
     const aspectScore = Math.max(0, 1 - Math.abs(ratio - 16 / 9) / 1.2)
     const score = width * height * aspectScore
     if (score <= bestScore) continue
-    const decoded = decodeCandidate(buf, candidate)
+    const decoded = decodeTexEntry(buf, candidate.abs, candidate)
     if (decoded === null) continue
-    best = { ...decoded, source: 'heuristic', selectedTex: candidate.name, packageMagic: pkg.magic }
+    if (decoded.kind === 'image') {
+      best = { bytes: decoded.bytes, mime: decoded.mime, width: decoded.width, height: decoded.height }
+    } else {
+      best = { bytes: rgbaToPng(decoded.width, decoded.height, decoded.rgba), mime: 'image/png', width: decoded.width, height: decoded.height }
+    }
     bestScore = score
   }
   return best
-}
-
-/** Backwards-compatible image-only extraction API. */
-export function extractBackgroundPng(buf: Uint8Array): BackgroundImage | null {
-  return extractBackgroundWithDiagnostics(buf)
 }
 
 // --- small readers -------------------------------------------------------

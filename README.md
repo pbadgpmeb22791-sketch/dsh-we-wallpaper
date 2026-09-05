@@ -1,36 +1,10 @@
 # dsh-we-wallpaper
 
-> [!IMPORTANT]
-> **v0.4.0 新版已经完成，完整独立插件位于 [`new/`](new/README(ch).md)。**
-> 新版解决了场景壁纸动画预览严重模糊的问题：首次由 Wallpaper Engine
-> 原生渲染场景——真全屏（无边框、置顶、按显示器物理分辨率、录制期间
-> 隐藏任务栏）——再通过 Windows Graphics Capture 生成约 12 秒的 H.264
-> 本地循环缓存；后续由 DeepSeek Harness 直接播放。
-> 它同时保留 `.pkg` / TEX 高清静态解析、视频/网页/图片壁纸、故障自动降级、
-> 诊断接口以及可选 RePKG 备用提取。旧版源码仍保留在仓库根目录，便于回退。
-
-## 新版安装
-
-克隆仓库后，将 DeepSeek Harness / Super Injector 的插件路径指向仓库中的
-`new` 目录：
-
-```text
-<仓库路径>\new
-```
-
-完整功能、工作原理、缓存位置、限制和开发说明见
-[`new/README(ch).md`](new/README(ch).md)，版本记录见
-[`new/CHANGELOG.md`](new/CHANGELOG.md)。
-
----
-
-## 旧版 v0.1.x
-
 Use your local [Wallpaper Engine](https://store.steampowered.com/app/431960)
 library as the background of the [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)
 Web GUI — **video wallpapers play**, **web wallpapers render**, and **scene
-wallpapers get their original high-resolution artwork decoded straight from
-the `.pkg` file**. Hot-pluggable, dependency-free, no dsh source changes.
+wallpapers get a one-time high-resolution animated cache from Wallpaper Engine**.
+Hot-pluggable, dependency-free, no dsh source changes.
 
 - Language: [简体中文](README(ch).md)
 
@@ -51,11 +25,13 @@ background:
   - `video` wallpapers play as a looping muted `<video>` (native resolution)
   - `web` wallpapers render in a sandboxed, click-through `<iframe>`
   - `image` wallpapers display as-is
-  - `scene` / `application` wallpapers display the **background artwork
-    decoded from `scene.pkg`** — an in-repo, dependency-free decoder for the
-    WE package format (embedded PNG/JPEG, LZ4 mipmaps, DXT1/3/5, RGBA8888),
-    so most scenes show their original 4K–8K textures instead of the tiny
-    150–256px preview GIF
+  - `scene` wallpapers in animated-first mode are first rendered true
+    fullscreen by Wallpaper Engine (borderless, topmost, native monitor
+    resolution, taskbar hidden for the capture) and recorded through
+    Windows.Graphics.Capture as a 12-second H.264 loop; subsequent loads use
+    the cache and never upscale the 160px Workshop preview
+  - HD-static mode and failure fallback still use the dependency-free `.pkg`
+    / TEX decoder to extract the exact 4K–8K background texture
 - **A settings card** in the official plugin configuration section
   (**设置 → 插件配置**): browse the library with live previews, search,
   one-click apply, and a badge marking the wallpaper currently running on
@@ -63,21 +39,32 @@ background:
 - **Readability controls**: dark *scrim*, *panel translucency* (the official
   surface tokens are re-declared translucent — works in light and dark
   themes), *cover / contain* fit, *sharpening* (SVG convolution filter for
-  fallback GIF sources), and an *animated scene previews* toggle
+  fallback preview sources), and an *animated first / HD static* scene mode
 - **Resource-conscious playback**: the media element is reused while the
   wallpaper is unchanged — dragging a slider never restarts the video stream
   or spawns another decode pipeline (a memory-leak crash was fixed here)
 - **Persistent selection** in `~/.dsh/we-wallpaper.json`; extracted scene
   artwork cached in `~/.dsh/we-wallpaper-cache/`
 
+## Animated cache
+
+- HD recordings live under `~/.dsh/we-wallpaper-cache/hd-video/`, keyed by
+  Wallpaper Engine Workshop ID, with JSON metadata used for invalidation.
+- This is a persistent, rebuildable cache rather than a disposable temporary
+  file. Source or recorder-version changes regenerate it; deleting it manually
+  is safe.
+- First generation foregrounds the Wallpaper Engine scene window for about 15
+  seconds. Later DSH launches read the cached MP4 and do not record again.
+
 ## Quick start
 
-```sh
-# from this repo
-dsh plugin --profile web add <path-or-git-url>
-# or, from a published repo:
-# dsh plugin --profile web add https://github.com/pbadgpmeb22791-sketch/dsh-we-wallpaper
+```powershell
+git clone https://github.com/pbadgpmeb22791-sketch/dsh-we-wallpaper.git
+dsh plugin --profile desktop add "<repository-path>\new"
 ```
+
+With dsh-super-injector, point the plugin path to `<repository-path>\new` as
+well. The repository root keeps the legacy version for rollback.
 
 Restart (or hot-reload) the dsh host, refresh the GUI page, open
 **设置 → 插件配置 → 动态壁纸**, pick a wallpaper, adjust scrim / translucency
@@ -94,6 +81,7 @@ manual `cordis.patch.yml` editing and dsh-super-injector) and
 | Host | `src/we-scanner.ts` | Discovers the WE install (env → Steam registry → `libraryfolders.vdf` → defaults) and parses every `project.json` |
 | Host | `src/pkg-tex.ts` | The WE package decoder: directory table, TEXV/TEXB containers, LZ4, DXT1/3/5, embedded PNG/JPEG, PNG encoding |
 | Host | `src/pkg-preview.ts` | Extraction cache (`~/.dsh/we-wallpaper-cache/`) |
+| Host | `src/scene-video.ts` | Builds/caches the HD H.264 loop through the official CLI + wcap |
 | Host | `src/routes.ts` | `/api/we-wallpaper/*` route family — same-origin fenced, traversal-guarded |
 | Host | `src/state.ts` | Selection persistence (`~/.dsh/we-wallpaper.json`) |
 | Browser | `src/client/layer.ts` | The fixed background layer: media per type, token-snapshot translucency, scrim, sharpen |
@@ -109,6 +97,9 @@ manual `cordis.patch.yml` editing and dsh-super-injector) and
 | `GET  /api/we-wallpaper/pkg/<id>` | The extracted scene background (PNG/JPEG, cached) |
 | `GET  /api/we-wallpaper/media/<id>` | The main media file (range-capable video streaming) |
 | `GET  /api/we-wallpaper/web/<id>/<path>` | Static files of a web wallpaper |
+| `POST /api/we-wallpaper/scene-video/generate/<id>` | Generate the first HD animated cache |
+| `GET  /api/we-wallpaper/scene-video/status/<id>` | Read progress / failure status |
+| `GET  /api/we-wallpaper/scene-video/media/<id>` | Range-capable cached H.264 stream |
 
 ## Security notes
 
@@ -120,46 +111,45 @@ manual `cordis.patch.yml` editing and dsh-super-injector) and
 - Web wallpapers run in a sandboxed, click-through iframe — they are still
   **your own local files**, treat workshop content with the trust you give
   it in Wallpaper Engine
-- Scene/application wallpapers are never executed; only their textures are
-  decoded
+- Dynamic scenes are opened only by the locally installed Wallpaper Engine.
+  The bundled recorder is the public-domain [wcap](https://github.com/mmozeiko/wcap)
+  binary; its license is included at `tools/wcap/LICENSE`.
 
 ## Known limitations
 
-- Scene backgrounds are **stills**: the largest landscape texture from the
-  package is shown — particles, shaders and animation cannot be re-rendered
-  in a browser. Very old package versions (PKGV0002-era) and a few exotic
-  textures fall back to the animated local GIF
-- The background-selection heuristic (largest × 16:9 aspect score) may pick
-  a landscape character/foreground plate over the true backdrop on rare
-  wallpapers (tracked in [docs/SUMMARY.md](docs/SUMMARY.md))
+- HD animated caching requires the Windows desktop Harness and a running
+  Wallpaper Engine. The scene window comes to the foreground for roughly 15
+  seconds on first generation. The 12-second loop may have a visible seam for
+  random/non-periodic scenes. Failures safely fall back to the exact HD still
+  or local preview.
+- Static extraction first follows the `scene.json → model → material → TEX`
+  dependency chain. Size/aspect heuristics are used only when scene relations
+  cannot identify the background, so unknown scenes can still select the wrong
+  texture.
 - Audio is muted (browser autoplay policy)
 - The translucency remap covers the official `--dsw-alias-*` tokens;
   third-party plugins with hardcoded backgrounds may stay opaque
 
-## Help wanted / 求助
+## What this update fixes
 
-A note from the author (业余作者自述，也欢迎有能力的人接手完善):
+The legacy version could play video wallpapers directly, but scene wallpapers
+usually had to upscale an approximately 160px Workshop preview. That preserved
+motion but looked visibly blurred. v0.3.0 lets Wallpaper Engine render the real
+scene, then records and caches the final HD output as H.264. This preserves both
+animation and clarity without attempting to reimplement the complete Wallpaper
+Engine scene renderer.
 
-> 我目前能做的 wallpaper engine 中动态壁纸格式是**视频文件**的才可以顺利作为
-> dsh 的壁纸；还有一种格式是 `.pkg` 加密格式，我尝试过 GitHub 上的 pkg 格式
-> 提取器，但是还是失败了，选择这种格式的壁纸的时候会显示失败。我本人是个
-> 业余的人员，只是尝试使用 agent 做一些想做的事情，如果有人会做的话，可以
-> 尝试做一下，谢谢了。
-
-Current status for context: this plugin ships its own dependency-free
-`scene.pkg` decoder (`src/pkg-tex.ts`), which covers most workshop scenes —
-measured 98% extraction over 40 sampled scenes (many 4K–8K). What still
-fails: very old packages (PKGV0002-era layout with misaligned entry names)
-and a few exotic texture containers (they fall back to the animated local
-GIF). If you know the remaining details of the WE package/tex format, a PR
-against `src/pkg-tex.ts` is very welcome. Reproduction notes live in
-[scripts/probe-pkg.mjs](scripts/probe-pkg.mjs) and
-[docs/SUMMARY.md](docs/SUMMARY.md).
+When recording is disabled or fails, the built-in static path can still resolve
+the real background texture from scene packages. Sample `3409595232` selects
+`materials/背景.tex` at 3840×2160 instead of the foreground character texture.
+Unknown or protected packages are not forcibly decrypted; they fail safely and
+return diagnostics.
 
 ## Roadmap
 
-See [docs/SUMMARY.md](docs/SUMMARY.md) — scene.json material-graph backdrop
-selection, PKGV0002-era support, optional multi-layer compose, npm publish.
+Possible follow-ups include configurable capture duration/bitrate, cache-space
+management and one-click cleanup, loop-seam improvements, and support for more
+legacy or exotic TEX containers. See [docs/SUMMARY.md](docs/SUMMARY.md).
 
 ## Development
 

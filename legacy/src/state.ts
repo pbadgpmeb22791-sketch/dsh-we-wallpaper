@@ -23,11 +23,8 @@ export interface WeState {
   fit: 'cover' | 'contain'
   /** Preview sharpen 0-100 (scene previews are small; sharpening helps). */
   sharpen: number
-  /** Scene wallpaper rendering preference. */
-  sceneMode: 'animated-first' | 'static-hd'
-  /** Optional absolute path to a user-installed RePKG executable. */
-  repkgPath: string
-  /** Deprecated compatibility mirror for older clients. */
+  /** Scene wallpapers: true = the animated (tiny) local GIF, false = the
+   *  sharp Steam workshop preview (default). */
   animatedPreviews: boolean
 }
 
@@ -38,9 +35,7 @@ export const DEFAULT_STATE: WeState = {
   translucency: 50,
   fit: 'cover',
   sharpen: 40,
-  sceneMode: 'animated-first',
-  repkgPath: '',
-  animatedPreviews: true,
+  animatedPreviews: false,
 }
 
 /** The dsh home dir (DSH_HOME env wins; overridable for tests). */
@@ -70,26 +65,8 @@ export function normalizeState(raw: unknown): WeState {
   const sharpen = typeof record.sharpen === 'number' && Number.isFinite(record.sharpen)
     ? Math.max(0, Math.min(100, Math.round(record.sharpen)))
     : DEFAULT_STATE.sharpen
-  const sceneMode = record.sceneMode === 'static-hd'
-    ? 'static-hd'
-    : record.sceneMode === 'animated-first'
-      ? 'animated-first'
-      : record.animatedPreviews === false
-        ? 'static-hd'
-        : 'animated-first'
-  const repkgPath = typeof record.repkgPath === 'string'
-    ? record.repkgPath.trim().slice(0, 2048)
-    : DEFAULT_STATE.repkgPath
-  return {
-    selectedId,
-    scrim,
-    translucency,
-    fit,
-    sharpen,
-    sceneMode,
-    repkgPath,
-    animatedPreviews: sceneMode === 'animated-first',
-  }
+  const animatedPreviews = record.animatedPreviews === true
+  return { selectedId, scrim, translucency, fit, sharpen, animatedPreviews }
 }
 
 /** Read the persisted state (defaults when absent or unreadable). */
@@ -109,13 +86,7 @@ export function readState(home: string = ''): WeState {
  * clamp to the schema bounds.
  */
 export function writeState(section: unknown, home: string = ''): WeState {
-  const patch = (typeof section === 'object' && section !== null ? section : {}) as Record<string, unknown>
-  // Older clients only know animatedPreviews. Translate that write before
-  // merging so the persisted sceneMode does not mask the compatibility key.
-  const compatibility = patch.sceneMode === undefined && typeof patch.animatedPreviews === 'boolean'
-    ? { sceneMode: patch.animatedPreviews ? 'animated-first' : 'static-hd' }
-    : {}
-  const next = normalizeState({ ...readState(home), ...patch, ...compatibility })
+  const next = normalizeState({ ...readState(home), ...(typeof section === 'object' && section !== null ? section : {}) })
   const file = stateFilePath(home)
   mkdirSync(dirname(file), { recursive: true })
   const tmp = `${file}.tmp-${process.pid}`
