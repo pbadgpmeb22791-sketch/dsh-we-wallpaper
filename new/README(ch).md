@@ -49,7 +49,7 @@
 
 ```powershell
 git clone https://github.com/pbadgpmeb22791-sketch/dsh-we-wallpaper.git
-dsh plugin --profile web add "<仓库路径>\new"
+dsh plugin --profile desktop add "<仓库路径>\new"
 ```
 
 使用 dsh-super-injector 时，同样把插件路径设置为 `<仓库路径>\new`。仓库根目录

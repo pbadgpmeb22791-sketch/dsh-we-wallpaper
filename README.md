@@ -1,10 +1,11 @@
 # dsh-we-wallpaper
 
 > [!IMPORTANT]
-> **v0.3.0 新版已经完成，完整独立插件位于 [`new/`](new/README(ch).md)。**
+> **v0.4.0 新版已经完成，完整独立插件位于 [`new/`](new/README(ch).md)。**
 > 新版解决了场景壁纸动画预览严重模糊的问题：首次由 Wallpaper Engine
-> 原生渲染场景，再通过 Windows Graphics Capture 生成约 12 秒的 1080p、
-> 30 FPS、16 Mbps H.264 本地循环缓存；后续由 DeepSeek Harness 直接播放。
+> 原生渲染场景——真全屏（无边框、置顶、按显示器物理分辨率、录制期间
+> 隐藏任务栏）——再通过 Windows Graphics Capture 生成约 12 秒的 H.264
+> 本地循环缓存；后续由 DeepSeek Harness 直接播放。
 > 它同时保留 `.pkg` / TEX 高清静态解析、视频/网页/图片壁纸、故障自动降级、
 > 诊断接口以及可选 RePKG 备用提取。旧版源码仍保留在仓库根目录，便于回退。
 

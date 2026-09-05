@@ -59,7 +59,7 @@ background:
 
 ```powershell
 git clone https://github.com/pbadgpmeb22791-sketch/dsh-we-wallpaper.git
-dsh plugin --profile web add "<repository-path>\new"
+dsh plugin --profile desktop add "<repository-path>\new"
 ```
 
 With dsh-super-injector, point the plugin path to `<repository-path>\new` as

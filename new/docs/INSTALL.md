@@ -76,7 +76,7 @@ D:\deepseek harness\dsh-we-wallpaper\new
 在 PowerShell 中执行：
 
 ```powershell
-dsh plugin --profile web add "D:\deepseek harness\dsh-we-wallpaper\new"
+dsh plugin --profile desktop add "D:\deepseek harness\dsh-we-wallpaper\new"
 ```
 
 然后重启 dsh 宿主并刷新 Web GUI。由于新版位于子目录，目前不要直接把 GitHub
@@ -90,10 +90,10 @@ dsh plugin --profile web add "D:\deepseek harness\dsh-we-wallpaper\new"
 2. 将 `new` 目录完整复制到：
 
    ```text
-   %USERPROFILE%\.dsh\profiles\web\node_modules\dsh-we-wallpaper
+   %USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-we-wallpaper
    ```
 
-3. 打开 `%USERPROFILE%\.dsh\profiles\web\cordis.patch.yml`，加入：
+3. 打开 `%USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml`，加入：
 
    ```yaml
    - insert:

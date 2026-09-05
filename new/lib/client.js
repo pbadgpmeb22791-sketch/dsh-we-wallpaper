@@ -1210,8 +1210,7 @@ body[${BODY_ATTR}] {
 			card.refresh();
 			ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
 				name: "settings.plugin.item",
-				id: "we-wallpaper",
-				order: 120,
+				key: "we-wallpaper",
 				locale: NS,
 				inject: () => card.inject()
 			}, WallpaperCard));

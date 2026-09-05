@@ -17,6 +17,13 @@ export { readState, writeState, normalizeState, DEFAULT_STATE, stateFilePath } f
 export { extractBackgroundPng, extractBackgroundWithDiagnostics, findSceneBackgroundTextures, parsePackage, findTexCandidates, decodeTexEntry, lz4BlockDecode, rgbaToPng, } from './pkg-tex.ts';
 /** Stable cordis plugin name (matches cordis.patch.yml insert id). */
 export declare const name = "we-wallpaper";
+/**
+ * Settings namespace this plugin owns. dsh 2.x renders a settings card only
+ * when its slot key names a settings namespace the Host actually serves, so
+ * the namespace below is both the card's slot key (client half) and a real
+ * registration here.
+ */
+export declare const SETTINGS_NAMESPACE: Branded<"SettingsNamespace">;
 /** Services required before the plugin can mount its routes. */
 export declare const inject: string[];
 /**

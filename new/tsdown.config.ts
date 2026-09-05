@@ -50,6 +50,7 @@ const nodeLib: UserConfig = {
     neverBundle: [
       '@deepseek-ai/cordis',
       '@deepseek-ai/dsh-host-webserver',
+      '@deepseek-ai/dsh-settings',
       'schemastery',
     ],
   },

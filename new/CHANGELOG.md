@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.4.0] - 2026-09-05
+
+### Fixed
+
+- Scene-video capture now presents the Wallpaper Engine window as a true
+  fullscreen surface: borderless, topmost, covering the primary monitor at
+  its **physical pixel size** (probed per machine — 2560×1440, 4K, …), with
+  the taskbars temporarily hidden, so recorded loops no longer contain the
+  taskbar, the desktop or overlapping windows. The previous build opened a
+  fixed 1920×1080 window that left the taskbar and desktop visible on larger
+  displays.
+- wcap's window-capture hotkey grabs the window under the mouse cursor; the
+  cursor is now parked in the centre of the presented window before the
+  hotkey fires, so the recorder always captures the wallpaper itself.
+- `reg.exe` is now addressed through `%SystemRoot%\System32` — the packaged
+  desktop host runs with a minimal PATH where a bare `reg` fails to resolve
+  (ERR spawn ENOENT), which silently disabled Steam discovery and made the
+  wallpaper library show as empty on machines whose Steam lives outside
+  `C:\Program Files (x86)`.
+- The DSH 2.x plugin-slot contract: `settings.plugin.item` is now a keyed
+  slot dispatched by settings namespace. The card registers with
+  `key: 'we-wallpaper'` and the host registers that settings namespace, so
+  the card renders again instead of failing the whole client boot
+  (`keyed slot "settings.plugin.item" requires options.key`).
+- `scene-capture-desktop.ps1` added: DPI-aware monitor probe, taskbar
+  hide/restore, window presentation; the desktop is restored in a `finally`
+  block so an aborted capture never leaves the taskbar hidden.
+
+### Changed
+
+- Scene-video loops are recorded at the monitor's native resolution and a
+  resolution-appropriate bitrate (1080p → 16 Mbps, 1440p → 20 Mbps, 4K →
+  24 Mbps); cached-loop metadata version bumped to 2 (one re-record per
+  wallpaper after updating).
+- Documentation: DSH Desktop 2.x installs plugins into the `desktop` profile
+  (`dsh plugin --profile desktop add ...`), not `web`.
+- peer/dev dependencies updated to the 2.x core (`@deepseek-ai/*`
+  `0.1.1-rc.2`).
+
 ## [0.3.0] - 2026-08-19
 
 - Animated-first scene mode now generates a 1080p/30 FPS/16 Mbps H.264 loop
